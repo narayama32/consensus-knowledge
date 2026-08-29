@@ -17,12 +17,12 @@
     const { useState, useEffect } = React;
 
     // ==========================================
-    // ⚠️ ここに自分の Supabase 情報を貼り付けてください
+    // Supabase 接続設定
     // ==========================================
     const SUPABASE_URL = "https://ykhspdfbugrjglcdpgwg.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_YdrPWwCW_bZ7MrgLzz4kyg_k0wIxEHE　";
+    const SUPABASE_ANON_KEY = "sb_publishable_YdrPWwCW_bZ7MrgLzz4kyg_k0wIxEHE";
 
-    // Supabaseクライアントの初期化（代入）
+    // Supabaseクライアントの初期化
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const INITIAL_CATEGORIES = [
