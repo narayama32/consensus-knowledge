@@ -31,19 +31,52 @@
             step: 1,
             bookTitle: "消費社会の神話と構造",
             author: "ジャン・ボードリヤール",
-            coverUrl: "https://cover.openbd.jp/9784326100742.jpg",
+            coverUrl: "https://books.google.com/books/content?id=t84yAAAAMAAJ&printsec=frontcover&img=1&zoom=1",
             intent: "モノではなく「差異の記号」を消費しているという現代社会の基本構造を掴むための必読原典。"
           },
           {
             step: 2,
             bookTitle: "動物化するポストモダン",
             author: "東浩紀",
-            coverUrl: "https://cover.openbd.jp/9784061495753.jpg",
+            coverUrl: "https://books.google.com/books/content?id=0sA0AAAAMAAJ&printsec=frontcover&img=1&zoom=1",
             intent: "ボードリヤール的な記号消費モデルがオタクカルチャーや情報環境でどう変容したかを接続して理解する。"
           }
         ]
       }
     ];
+
+    // CORS制限を100%回避するJSONP検索関数
+    function searchGoogleBooksJSONP(query) {
+      return new Promise((resolve, reject) => {
+        const callbackName = 'gbooks_callback_' + Math.random().toString(36).substring(2, 9);
+        const script = document.createElement('script');
+        
+        // タイムアウト処理（5秒）
+        const timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error('検索タイムアウト'));
+        }, 5000);
+
+        function cleanup() {
+          if (window[callbackName]) delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+          clearTimeout(timeout);
+        }
+
+        window[callbackName] = function(data) {
+          cleanup();
+          resolve(data);
+        };
+
+        script.src = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=6&callback=${callbackName}`;
+        script.onerror = function() {
+          cleanup();
+          reject(new Error('スクリプト読み込みエラー'));
+        };
+
+        document.body.appendChild(script);
+      });
+    }
 
     function App() {
       const [routes, setRoutes] = useState(INITIAL_ROUTES);
@@ -64,7 +97,7 @@
         ? routes 
         : routes.filter(r => r.category === selectedCategory);
 
-      // 国会図書館サーチ (NDL) API を使った完全CORSフリー検索
+      // JSONPによる検索処理
       const handleSearchBook = async (idx) => {
         const query = newSteps[idx].searchQuery.trim();
         if (!query) return;
@@ -77,47 +110,30 @@
         } : s));
 
         try {
-          // 国立国会図書館サーチ OpenSearch API
-          const targetUrl = `https://ndlsearch.ndl.go.jp/api/opensearch?title=${encodeURIComponent(query)}&cnt=6`;
-          const res = await fetch(targetUrl);
-          
-          if (!res.ok) throw new Error("NDL API Error");
+          const data = await searchGoogleBooksJSONP(query);
 
-          const xmlText = await res.text();
-          const parser = new DOMParser();
-          const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-          const items = xmlDoc.getElementsByTagName("item");
-
-          if (!items || items.length === 0) {
+          if (!data.items || data.items.length === 0) {
             setNewSteps(prev => prev.map((s, i) => i === idx ? { 
               ...s, 
               isSearching: false, 
               searchResults: [], 
-              searchMessage: "該当する書籍が見つかりませんでした。直接手入力してください。" 
+              searchMessage: "該当する書籍が見つかりませんでした。タイトル欄に直接入力してください。" 
             } : s));
             return;
           }
 
-          const parsedResults = [];
-          for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            const titleElem = item.getElementsByTagName("title")[0];
-            const authorElem = item.getElementsByTagName("author")[0];
-            const isbnElem = item.getElementsByTagName("identifier")[0];
-
-            const title = titleElem ? titleElem.textContent : query;
-            const author = authorElem ? authorElem.textContent : "著者不明";
-            
-            // ISBNがあればopenBDから高画質な書影を取得
-            let isbn = "";
-            if (isbnElem && isbnElem.textContent) {
-              const match = isbnElem.textContent.match(/\d{13}|\d{10}/);
-              if (match) isbn = match[0];
+          const parsedResults = data.items.map(item => {
+            const info = item.volumeInfo || {};
+            let thumb = "";
+            if (info.imageLinks) {
+              thumb = (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail || "").replace("http://", "https://");
             }
-            const coverUrl = isbn ? `https://cover.openbd.jp/${isbn}.jpg` : "";
-
-            parsedResults.push({ title, author, coverUrl });
-          }
+            return {
+              title: info.title || query,
+              author: (info.authors && info.authors.join(", ")) || (info.publisher ? `${info.publisher} 出版` : "著者不明"),
+              coverUrl: thumb
+            };
+          });
 
           setNewSteps(prev => prev.map((s, i) => i === idx ? { 
             ...s, 
@@ -127,13 +143,13 @@
           } : s));
 
         } catch (error) {
-          console.warn("API Error:", error);
+          console.warn("JSONP Search Error:", error);
           setNewSteps(prev => prev.map((s, i) => i === idx ? { 
             ...s, 
             isSearching: false, 
             bookTitle: query,
             searchResults: [], 
-            searchMessage: `通信に失敗したため「${query}」をタイトル欄に代入しました。` 
+            searchMessage: `「${query}」をタイトル欄にセットしました。著者名を手入力してください。` 
           } : s));
         }
       };
@@ -386,11 +402,11 @@
                         <div className="font-bold text-xs text-amber-900">Step {idx + 1}</div>
 
                         <div className="space-y-1">
-                          <label className="block text-[11px] font-medium text-stone-600">書籍を検索（国会図書館DB直接検索）</label>
+                          <label className="block text-[11px] font-medium text-stone-600">書籍を検索（タイトルやキーワードを入力）</label>
                           <div className="flex gap-2">
                             <input 
                               type="text" 
-                              placeholder="タイトルを入力（例: 消費社会の神話と構造）" 
+                              placeholder="例: ポレポレ / 消費社会の神話 / 英文法" 
                               value={step.searchQuery}
                               onChange={(e) => {
                                 const val = e.target.value;
