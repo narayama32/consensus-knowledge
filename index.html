@@ -10,7 +10,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-[#FBF9F5] text-stone-800 font-sans min-h-screen">
+<body class="bg-[#FBF9F5] text-stone-900 font-sans min-h-screen">
   <div id="root"></div>
 
   <script type="text/babel">
@@ -31,7 +31,6 @@
       "経済学"
     ];
 
-    // ローカルストレージ管理
     const STORAGE_KEY = "curatepath_my_route_ids";
     const getMyRouteIds = () => {
       try {
@@ -58,21 +57,22 @@
       const [currentRoute, setCurrentRoute] = useState(null);
       const [myRouteIds, setMyRouteIds] = useState([]);
       
-      // 投稿・編集モーダルの状態
+      // モーダル & ステップ管理
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [isEditMode, setIsEditMode] = useState(false);
       const [editingId, setEditingId] = useState(null);
       const [isSubmitting, setIsSubmitting] = useState(false);
+      const [wizardStep, setWizardStep] = useState(0); // 0: 基本設定, 1以上: 各本の入力
+      const [currentBookIndex, setCurrentBookIndex] = useState(0);
 
-      // フォーム入力値（デフォルトを parallel に変更）
+      // フォーム入力値
       const [formatType, setFormatType] = useState("parallel"); 
       const [newCategory, setNewCategory] = useState("近代哲学");
       const [newTitle, setNewTitle] = useState("");
       const [newTarget, setNewTarget] = useState("");
       const [newAuthor, setNewAuthor] = useState("");
       const [newSteps, setNewSteps] = useState([
-        { step: 1, bookTitle: "", author: "", intent: "" },
-        { step: 2, bookTitle: "", author: "", intent: "" }
+        { step: 1, bookTitle: "", author: "", intent: "" }
       ]);
 
       const fetchRoutes = async () => {
@@ -101,7 +101,6 @@
         ? routes 
         : routes.filter(r => r.category === selectedCategory);
 
-      // データ構造の解析
       const getRouteData = (route) => {
         if (!route || !route.steps) return { type: "parallel", items: [] };
         if (Array.isArray(route.steps)) {
@@ -115,40 +114,28 @@
         setNewSteps(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
       };
 
-      const handleAddStep = () => {
-        setNewSteps(prev => [
-          ...prev, 
-          { step: prev.length + 1, bookTitle: "", author: "", intent: "" }
-        ]);
-      };
-
-      const handleRemoveStep = (idx) => {
-        if (newSteps.length <= 1) return;
-        const updated = newSteps.filter((_, i) => i !== idx).map((s, i) => ({ ...s, step: i + 1 }));
-        setNewSteps(updated);
-      };
-
-      // 新規作成モーダルを開く（デフォルトは並列リスト）
       const handleOpenCreate = () => {
         setIsEditMode(false);
         setEditingId(null);
+        setWizardStep(0);
+        setCurrentBookIndex(0);
         setFormatType("parallel");
         setNewCategory("近代哲学");
         setNewTitle("");
         setNewTarget("");
         setNewAuthor("");
         setNewSteps([
-          { step: 1, bookTitle: "", author: "", intent: "" },
-          { step: 2, bookTitle: "", author: "", intent: "" }
+          { step: 1, bookTitle: "", author: "", intent: "" }
         ]);
         setIsModalOpen(true);
       };
 
-      // 編集モーダルを開く
       const handleStartEdit = (route) => {
         const routeData = getRouteData(route);
         setIsEditMode(true);
         setEditingId(route.id);
+        setWizardStep(0);
+        setCurrentBookIndex(0);
         setFormatType(routeData.type);
         setNewCategory(route.category || "近代哲学");
         setNewTitle(route.title || "");
@@ -160,7 +147,6 @@
         setIsModalOpen(true);
       };
 
-      // 削除処理
       const handleDelete = async (route) => {
         if (!window.confirm(`「${route.title}」を本当に削除しますか？`)) return;
 
@@ -184,13 +170,44 @@
         }
       };
 
-      // 投稿・更新の送信処理
-      const handleSubmit = async (e) => {
-        e.preventDefault();
-        const validSteps = newSteps.filter(s => s.bookTitle.trim() !== "");
-        if (validSteps.length === 0) return;
+      // 次の本へ進む（なければ追加）
+      const handleNextBook = () => {
+        const current = newSteps[currentBookIndex];
+        if (!current || !current.bookTitle.trim()) {
+          alert("本のタイトルを入力してください。");
+          return;
+        }
 
-        const stepsWithFormat = validSteps.map((s, idx) => ({
+        if (currentBookIndex + 1 < newSteps.length) {
+          setCurrentBookIndex(currentBookIndex + 1);
+        } else {
+          setNewSteps([
+            ...newSteps,
+            { step: newSteps.length + 1, bookTitle: "", author: "", intent: "" }
+          ]);
+          setCurrentBookIndex(newSteps.length);
+        }
+      };
+
+      // 前の本に戻る
+      const handlePrevBook = () => {
+        if (currentBookIndex > 0) {
+          setCurrentBookIndex(currentBookIndex - 1);
+        } else {
+          setWizardStep(0);
+        }
+      };
+
+      // 投稿処理
+      const handleSubmit = async (e) => {
+        if (e) e.preventDefault();
+        const validSteps = newSteps.filter(s => s.bookTitle.trim() !== "");
+        if (validSteps.length === 0) {
+          alert("少なくとも1冊は本の情報を入力してください。");
+          return;
+        }
+
+        const stepsWithFormat = validSteps.map((s) => ({
           ...s,
           _formatType: formatType
         }));
@@ -199,8 +216,8 @@
         try {
           const entryData = {
             category: newCategory,
-            title: newTitle,
-            target_audience: newTarget,
+            title: newTitle.trim() || "無題の選書",
+            target_audience: newTarget.trim(),
             author: newAuthor.trim() || "匿名キュレーター",
             steps: stepsWithFormat
           };
@@ -258,7 +275,7 @@
               >
                 CuratePath
               </h1>
-              <p className="text-xs text-stone-500 mt-1">人文書・哲学の「テーマ別おすすめ選書 / 読む順番と接続のロジック」を共有する場</p>
+              <p className="text-xs text-stone-600 mt-1 font-medium">人文書・哲学の「テーマ別おすすめ選書 / 読む順番と接続のロジック」を共有する場</p>
             </div>
             <button 
               onClick={handleOpenCreate}
@@ -268,22 +285,22 @@
             </button>
           </header>
 
-          {/* 💡 ガイド案内ボックス */}
-          <div className="mb-6 p-4 bg-stone-200/60 border border-stone-300/80 rounded-xl text-xs text-stone-700 space-y-2 leading-relaxed">
-            <div className="flex items-start gap-1.5">
-              <span className="font-bold text-stone-900 shrink-0">📖 投稿スタイルについて：</span>
-              <span>
-                「現代思想のおすすめ3選」のような<strong>まとまりのある選書リスト（並列）</strong>はもちろん、<strong>「読む順番（順序ルート）」</strong>としても投稿できます。投稿時にスタイルを自由に選べます。
+          {/* 💡 ガイド案内ボックス（黒文字で見やすく調整） */}
+          <div className="mb-6 p-4 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 space-y-2.5 leading-relaxed shadow-sm">
+            <div className="flex items-start gap-2">
+              <span className="font-bold text-stone-950 shrink-0">📖 投稿スタイルについて：</span>
+              <span className="text-stone-900">
+                「現代思想のおすすめ3選」のような<strong>まとまりのある選書リスト（並列）</strong>はもちろん、<strong>「読む順番（順序ルート）」</strong>としても自由に投稿できます。
               </span>
             </div>
-            <div className="flex items-start gap-1.5 pt-1 border-t border-stone-300/60">
-              <span className="font-bold text-stone-900 shrink-0">⚙️ 編集・削除について：</span>
-              <span>
-                面倒なログインやパスワードは不要です。<strong>投稿した端末（ブラウザ）からアクセスすると、自動的に「✎ 編集」「🗑 削除」ボタンが表示されます。</strong>
+            <div className="flex items-start gap-2 pt-2 border-t border-stone-100">
+              <span className="font-bold text-stone-950 shrink-0">⚙️ 編集・削除について：</span>
+              <span className="text-stone-900">
+                ログインやパスワードは不要です。<strong>投稿した端末（ブラウザ）からアクセスすると、自動的に「✎ 編集」「🗑 削除」ボタンが表示されます。</strong>
               </span>
             </div>
-            <div className="flex items-start gap-1.5 pt-1 border-t border-stone-300/60 text-stone-500 text-[11px]">
-              <span>※ 分野の分類は目安です。お気軽に近しいカテゴリをお選びください。</span>
+            <div className="flex items-start gap-2 pt-2 border-t border-stone-100 text-stone-800 text-[11px] font-medium">
+              <span>※ 分野の分類に気を遣う必要はあまりありません。一番近いと感じるカテゴリをお気軽にお選びください。</span>
             </div>
           </div>
 
@@ -298,7 +315,7 @@
                   <div className="flex justify-between items-center mb-6">
                     <button 
                       onClick={() => setCurrentRoute(null)}
-                      className="inline-flex items-center text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-200/70 hover:bg-stone-200 px-3 py-1.5 rounded transition"
+                      className="inline-flex items-center text-xs font-semibold text-stone-700 hover:text-stone-950 bg-stone-200/80 hover:bg-stone-200 px-3 py-1.5 rounded transition"
                     >
                       ← 一覧に戻る
                     </button>
@@ -307,7 +324,7 @@
                       <div className="flex gap-2">
                         <button 
                           onClick={() => handleStartEdit(currentRoute)}
-                          className="text-xs font-semibold text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 px-3 py-1.5 rounded-lg shadow-sm transition"
+                          className="text-xs font-semibold text-stone-800 bg-white border border-stone-300 hover:bg-stone-50 px-3 py-1.5 rounded-lg shadow-sm transition"
                         >
                           ✎ 編集する
                         </button>
@@ -323,22 +340,22 @@
 
                   <div className="bg-white border border-stone-200 rounded-xl p-6 mb-8 shadow-sm">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-900 border border-amber-200/60">
+                      <span className="text-xs font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-950 border border-amber-200/60">
                         {currentRoute.category}
                       </span>
-                      <span className="text-xs font-medium px-2 py-0.5 rounded bg-stone-100 text-stone-600 border border-stone-200">
+                      <span className="text-xs font-medium px-2 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200">
                         {isSequence ? "順序ルート" : "並列リスト"}
                       </span>
                     </div>
                     <h2 className="text-xl font-bold text-stone-900 mt-3 font-serif">{currentRoute.title}</h2>
-                    <div className="mt-4 pt-4 border-t border-stone-100 flex flex-wrap justify-between text-xs text-stone-600 gap-2">
-                      <div><span className="font-semibold text-stone-800">対象読者・テーマ:</span> {currentRoute.target_audience}</div>
-                      <div><span className="font-semibold text-stone-800">キュレーター:</span> {currentRoute.author}</div>
+                    <div className="mt-4 pt-4 border-t border-stone-100 flex flex-wrap justify-between text-xs text-stone-700 gap-2">
+                      <div><span className="font-semibold text-stone-900">対象読者・テーマ:</span> {currentRoute.target_audience}</div>
+                      <div><span className="font-semibold text-stone-900">キュレーター:</span> {currentRoute.author}</div>
                     </div>
                   </div>
 
                   <div className="space-y-6">
-                    <h3 className="text-xs font-bold text-stone-400 uppercase tracking-widest px-1">
+                    <h3 className="text-xs font-bold text-stone-500 uppercase tracking-widest px-1">
                       {isSequence ? `選書ロードマップ（全 ${currentData.items.length} 冊）` : `おすすめ選書リスト（全 ${currentData.items.length} 冊）`}
                     </h3>
 
@@ -351,7 +368,7 @@
                         <div className="relative z-10 bg-white border border-stone-200/90 rounded-xl p-6 shadow-sm hover:shadow transition">
                           <div className="flex items-start gap-4">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-sm ${
-                              isSequence ? "bg-stone-900 text-stone-50" : "bg-amber-100 text-amber-900 border border-amber-300"
+                              isSequence ? "bg-stone-900 text-stone-50" : "bg-amber-100 text-amber-950 border border-amber-300"
                             }`}>
                               {isSequence ? item.step : index + 1}
                             </div>
@@ -359,11 +376,11 @@
                             <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-baseline gap-2">
                                 <h4 className="text-base font-bold text-stone-900 font-serif leading-snug">{item.bookTitle}</h4>
-                                {item.author && <span className="text-xs text-stone-500">（著: {item.author}）</span>}
+                                {item.author && <span className="text-xs text-stone-600">（著: {item.author}）</span>}
                               </div>
 
-                              <div className="mt-3 bg-[#FBF9F5] p-3.5 rounded-lg border border-stone-200/70 text-xs sm:text-sm text-stone-700 leading-relaxed">
-                                <span className="text-xs font-bold text-amber-900 block mb-1">
+                              <div className="mt-3 bg-[#FBF9F5] p-4 rounded-lg border border-stone-200 text-sm text-stone-900 leading-relaxed whitespace-pre-wrap">
+                                <span className="text-xs font-bold text-amber-950 block mb-1.5">
                                   {isSequence ? "【この順番にした意図・接続の理由】" : "【おすすめの理由・見どころ】"}
                                 </span>
                                 {item.intent}
@@ -388,7 +405,7 @@
                     className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition ${
                       selectedCategory === cat 
                         ? "bg-stone-900 text-stone-50 shadow-sm" 
-                        : "bg-white text-stone-600 border border-stone-200/80 hover:bg-stone-100"
+                        : "bg-white text-stone-700 border border-stone-200/80 hover:bg-stone-100"
                     }`}
                   >
                     {cat}
@@ -397,9 +414,9 @@
               </div>
 
               {isLoading ? (
-                <div className="text-center py-12 text-xs text-stone-400">クラウドからデータを読み込み中...</div>
+                <div className="text-center py-12 text-xs text-stone-500">クラウドからデータを読み込み中...</div>
               ) : filteredRoutes.length === 0 ? (
-                <div className="text-center py-12 text-xs text-stone-400 bg-white border border-stone-200 rounded-xl">
+                <div className="text-center py-12 text-xs text-stone-500 bg-white border border-stone-200 rounded-xl">
                   まだ選書が投稿されていません。「+ 選書を投稿する」から最初の選書を投稿してみましょう！
                 </div>
               ) : (
@@ -417,14 +434,14 @@
                         <div className="flex justify-between items-start gap-4">
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200/60">
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-950 border border-amber-200/60">
                                 {route.category}
                               </span>
-                              <span className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">
+                              <span className="text-[10px] text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">
                                 {isSequence ? "順序ルート" : "並列リスト"}
                               </span>
                               {myRouteIds.includes(route.id) && (
-                                <span className="text-[10px] bg-stone-800 text-stone-100 px-1.5 py-0.5 rounded font-medium">
+                                <span className="text-[10px] bg-stone-900 text-stone-100 px-1.5 py-0.5 rounded font-medium">
                                   あなたの投稿
                                 </span>
                               )}
@@ -432,11 +449,11 @@
                             <h2 className="text-base font-bold text-stone-900 mt-2 hover:text-amber-950 transition font-serif">
                               {route.title}
                             </h2>
-                            <p className="text-xs text-stone-500 mt-1">テーマ・関心: {route.target_audience}</p>
+                            <p className="text-xs text-stone-600 mt-1">テーマ・関心: {route.target_audience}</p>
                           </div>
                           <div className="text-right shrink-0">
-                            <span className="text-[11px] text-stone-400 block">{route.author}</span>
-                            <span className="text-xs font-bold text-stone-700 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200 inline-block mt-2">
+                            <span className="text-[11px] text-stone-500 block">{route.author}</span>
+                            <span className="text-xs font-bold text-stone-800 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200 inline-block mt-2">
                               {routeData.items.length} 冊 {isSequence ? "ルート →" : "リスト →"}
                             </span>
                           </div>
@@ -449,196 +466,236 @@
             </div>
           )}
 
-          {/* 投稿 / 編集モーダル */}
+          {/* 🌟 画面中央のステップ式投稿モーダル */}
           {isModalOpen && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-xl border border-stone-200">
-                <div className="flex justify-between items-center border-b border-stone-200 pb-3">
-                  <h3 className="font-bold text-base text-stone-900 font-serif">
-                    {isEditMode ? "選書の編集" : "選書の投稿"}
-                  </h3>
-                  <button onClick={() => setIsModalOpen(false)} className="text-stone-400 hover:text-stone-600 text-lg">✕</button>
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-stone-200 transition-all">
+                
+                {/* ヘッダー */}
+                <div className="flex justify-between items-center border-b border-stone-100 pb-4 mb-5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-700">
+                      {wizardStep === 0 ? "Step 1 / 2: 基本設定" : `Step 2 / 2: 本の入力 (${currentBookIndex + 1}冊目)`}
+                    </span>
+                    <h3 className="font-bold text-base text-stone-900 font-serif">
+                      {isEditMode ? "選書を編集" : "選書を投稿"}
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setIsModalOpen(false)} 
+                    className="text-stone-400 hover:text-stone-700 text-xl font-semibold"
+                  >
+                    ✕
+                  </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* 形式選択（デフォルト：並列リスト） */}
-                  <div>
-                    <label className="block text-xs font-semibold text-stone-700 mb-1.5">投稿スタイル</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormatType("parallel")}
-                        className={`p-2.5 rounded-lg border text-left text-xs transition ${
-                          formatType === "parallel"
-                            ? "border-stone-900 bg-stone-900 text-white font-bold"
-                            : "border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100"
-                        }`}
-                      >
-                        <div className="font-semibold">並列リスト形式 (箇条書き)</div>
-                        <div className={`text-[10px] mt-0.5 ${formatType === "parallel" ? "text-stone-300" : "text-stone-400"}`}>
-                          おすすめ本・テーマ別コレクション
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFormatType("sequence")}
-                        className={`p-2.5 rounded-lg border text-left text-xs transition ${
-                          formatType === "sequence"
-                            ? "border-stone-900 bg-stone-900 text-white font-bold"
-                            : "border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100"
-                        }`}
-                      >
-                        <div className="font-semibold">順序ルート形式 (Step 1, 2...)</div>
-                        <div className={`text-[10px] mt-0.5 ${formatType === "sequence" ? "text-stone-300" : "text-stone-400"}`}>
-                          読む順番や接続のロジックを提示
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
+                {/* 画面1：基本設定（分野 ＆ 並列/ルートの選択） */}
+                {wizardStep === 0 && (
+                  <div className="space-y-5">
+                    {/* 上部：分野 */}
                     <div>
-                      <label className="block text-xs font-semibold text-stone-700 mb-1">分野</label>
+                      <label className="block text-xs font-bold text-stone-800 mb-1.5">
+                        1. 分野を選択（一番近いもの）
+                      </label>
                       <select 
                         value={newCategory} 
                         onChange={(e) => setNewCategory(e.target.value)}
-                        className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs bg-white text-stone-800"
+                        className="w-full border border-stone-300 rounded-xl px-3.5 py-2.5 text-sm bg-white text-stone-900 focus:outline-none focus:border-stone-900"
                       >
                         {INITIAL_CATEGORIES.filter(c => c !== "すべて").map(c => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
                     </div>
+
+                    {/* 下部：並列かルートかの選択ライン */}
                     <div>
-                      <label className="block text-xs font-semibold text-stone-700 mb-1">投稿者名</label>
-                      <input 
-                        type="text" 
-                        placeholder="例: 名無しの読書子" 
-                        value={newAuthor}
-                        onChange={(e) => setNewAuthor(e.target.value)}
-                        className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs text-stone-800"
-                      />
+                      <label className="block text-xs font-bold text-stone-800 mb-1.5">
+                        2. 投稿スタイルを選択
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setFormatType("parallel")}
+                          className={`p-3.5 rounded-xl border-2 text-left transition ${
+                            formatType === "parallel"
+                              ? "border-stone-900 bg-stone-900 text-white shadow-sm"
+                              : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
+                          }`}
+                        >
+                          <div className="font-bold text-xs">並列リスト形式</div>
+                          <div className={`text-[11px] mt-1 ${formatType === "parallel" ? "text-stone-300" : "text-stone-500"}`}>
+                            おすすめ本・テーマ別（順序なし）
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setFormatType("sequence")}
+                          className={`p-3.5 rounded-xl border-2 text-left transition ${
+                            formatType === "sequence"
+                              ? "border-stone-900 bg-stone-900 text-white shadow-sm"
+                              : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
+                          }`}
+                        >
+                          <div className="font-bold text-xs">順序ルート形式</div>
+                          <div className={`text-[11px] mt-1 ${formatType === "sequence" ? "text-stone-300" : "text-stone-500"}`}>
+                            Step 1 ➔ Step 2（読む順番重視）
+                          </div>
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-stone-700 mb-1">タイトル</label>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder={formatType === "parallel" ? "例: 現代思想を始めるためのおすすめ3選" : "例: 主観と認識の限界をめぐる基礎ルート"} 
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs text-stone-800"
-                    />
-                  </div>
+                    {/* タイトルと想定読者 */}
+                    <div className="pt-2 border-t border-stone-100 space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-stone-800 mb-1">
+                          リスト / ルートのタイトル *
+                        </label>
+                        <input 
+                          type="text" 
+                          required
+                          placeholder={formatType === "parallel" ? "例: 現代思想を始めるためのおすすめ3選" : "例: 主観と認識の限界をめぐる基礎ルート"} 
+                          value={newTitle}
+                          onChange={(e) => setNewTitle(e.target.value)}
+                          className="w-full border border-stone-300 rounded-xl px-3.5 py-2.5 text-sm text-stone-900 focus:outline-none focus:border-stone-900"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-stone-700 mb-1">想定読者・テーマ・関心</label>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="例: ポスト構造主義の主要な概念に触れてみたい人" 
-                      value={newTarget}
-                      onChange={(e) => setNewTarget(e.target.value)}
-                      className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs text-stone-800"
-                    />
-                  </div>
-
-                  <div className="space-y-4 pt-2">
-                    <label className="block text-xs font-bold text-stone-900 uppercase">
-                      {formatType === "parallel" ? "おすすめ書籍一覧" : "読む順番と意図"}
-                    </label>
-
-                    {newSteps.map((step, idx) => (
-                      <div key={idx} className="p-4 bg-[#FBF9F5] border border-stone-200 rounded-lg space-y-3 relative">
-                        <div className="flex justify-between items-center">
-                          <span className="font-bold text-xs text-amber-900">
-                            {formatType === "parallel" ? `Book ${idx + 1}` : `Step ${step.step}`}
-                          </span>
-                          {newSteps.length > 1 && (
-                            <button 
-                              type="button" 
-                              onClick={() => handleRemoveStep(idx)}
-                              className="text-[11px] text-red-500 hover:text-red-700"
-                            >
-                              削除
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[11px] text-stone-600 mb-0.5">本のタイトル *</label>
-                            <input 
-                              type="text" 
-                              required
-                              placeholder="例: 方法序説" 
-                              value={step.bookTitle}
-                              onChange={(e) => handleStepChange(idx, "bookTitle", e.target.value)}
-                              className="w-full border border-stone-300 rounded-md px-2.5 py-1.5 text-xs bg-white text-stone-800"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-stone-600 mb-0.5">著者名</label>
-                            <input 
-                              type="text" 
-                              placeholder="例: ルネ・デカルト" 
-                              value={step.author}
-                              onChange={(e) => handleStepChange(idx, "author", e.target.value)}
-                              className="w-full border border-stone-300 rounded-md px-2.5 py-1.5 text-xs bg-white text-stone-800"
-                            />
-                          </div>
-                        </div>
-
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-[11px] text-stone-600 mb-0.5">
-                            {formatType === "parallel" ? "おすすめの理由・見どころ *" : "なぜこの順番なのか？（接続の理由） *"}
-                          </label>
-                          <textarea 
-                            rows="2"
-                            required
-                            placeholder={formatType === "parallel" 
-                              ? "例: 現代思想の脱構築を学ぶ上で最も鮮烈な視点を提供してくれるため。" 
-                              : "例: 1冊目の主観の出発点を踏まえ、理性の限界を規定する2冊目へ接続するため。"}
-                            value={step.intent}
-                            onChange={(e) => handleStepChange(idx, "intent", e.target.value)}
-                            className="w-full border border-stone-300 rounded-md px-2.5 py-1.5 text-xs bg-white text-stone-800"
+                          <label className="block text-xs font-bold text-stone-800 mb-1">テーマ・関心・対象</label>
+                          <input 
+                            type="text" 
+                            placeholder="例: 初心者向け、構造主義" 
+                            value={newTarget}
+                            onChange={(e) => setNewTarget(e.target.value)}
+                            className="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-stone-800 mb-1">キュレーター名</label>
+                          <input 
+                            type="text" 
+                            placeholder="例: 名無しの読書子" 
+                            value={newAuthor}
+                            onChange={(e) => setNewAuthor(e.target.value)}
+                            className="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900"
                           />
                         </div>
                       </div>
-                    ))}
+                    </div>
 
-                    <button 
-                      type="button" 
-                      onClick={handleAddStep}
-                      className="text-xs text-stone-700 hover:text-stone-900 font-semibold"
-                    >
-                      + 本を追加する
-                    </button>
+                    <div className="flex justify-end gap-2 pt-4 border-t border-stone-100">
+                      <button 
+                        type="button" 
+                        onClick={() => setIsModalOpen(false)}
+                        className="px-4 py-2.5 border border-stone-300 rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-50"
+                      >
+                        キャンセル
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (!newTitle.trim()) {
+                            alert("タイトルを入力してください。");
+                            return;
+                          }
+                          setWizardStep(1);
+                        }}
+                        className="px-5 py-2.5 bg-stone-900 text-stone-50 rounded-xl text-xs font-bold hover:bg-stone-800 shadow-md transition"
+                      >
+                        本の入力へ進む →
+                      </button>
+                    </div>
                   </div>
+                )}
 
-                  <div className="flex justify-end gap-2 pt-4 border-t border-stone-200">
-                    <button 
-                      type="button" 
-                      onClick={() => setIsModalOpen(false)}
-                      className="px-4 py-2 border border-stone-300 rounded-lg text-xs text-stone-600 hover:bg-stone-50"
-                    >
-                      キャンセル
-                    </button>
-                    <button 
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="px-4 py-2 bg-stone-900 text-stone-50 rounded-lg text-xs font-semibold hover:bg-stone-800 shadow-sm disabled:opacity-50"
-                    >
-                      {isSubmitting ? "保存中..." : isEditMode ? "変更を保存する" : "投稿する"}
-                    </button>
+                {/* 画面2：本の入力（1冊ずつ大きなフォームで入力） */}
+                {wizardStep === 1 && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-stone-100/70 p-3 rounded-xl">
+                      <span className="font-bold text-sm text-stone-900">
+                        {formatType === "parallel" ? `📖 ${currentBookIndex + 1} 冊目の本` : `🚀 Step ${currentBookIndex + 1}`}
+                      </span>
+                      <span className="text-xs text-stone-500 font-medium">
+                        全 {newSteps.length} 冊登録中
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-800 mb-1">本のタイトル *</label>
+                      <input 
+                        type="text" 
+                        required
+                        placeholder="例: 方法序説" 
+                        value={newSteps[currentBookIndex]?.bookTitle || ""}
+                        onChange={(e) => handleStepChange(currentBookIndex, "bookTitle", e.target.value)}
+                        className="w-full border border-stone-300 rounded-xl px-3.5 py-2.5 text-sm text-stone-900 font-medium focus:outline-none focus:border-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-800 mb-1">著者名</label>
+                      <input 
+                        type="text" 
+                        placeholder="例: ルネ・デカルト" 
+                        value={newSteps[currentBookIndex]?.author || ""}
+                        onChange={(e) => handleStepChange(currentBookIndex, "author", e.target.value)}
+                        className="w-full border border-stone-300 rounded-xl px-3.5 py-2 text-xs text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-800 mb-1">
+                        {formatType === "parallel" ? "おすすめの理由・見どころ（広めに書けます） *" : "なぜこの順番なのか？接続の理由 *"}
+                      </label>
+                      <textarea 
+                        rows="4"
+                        required
+                        placeholder={formatType === "parallel" 
+                          ? "例: 現代思想を学ぶ上で最も切れ味鋭い入門書。デリダやドゥルーズに入る前の足がかりとして最適です。" 
+                          : "例: 1冊目の主観の出発点を踏まえ、理性の限界を規定する2冊目へスムーズに接続するため。"}
+                        value={newSteps[currentBookIndex]?.intent || ""}
+                        onChange={(e) => handleStepChange(currentBookIndex, "intent", e.target.value)}
+                        className="w-full border border-stone-300 rounded-xl p-3 text-xs text-stone-900 leading-relaxed focus:outline-none focus:border-stone-900"
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center pt-4 border-t border-stone-100">
+                      <button 
+                        type="button" 
+                        onClick={handlePrevBook}
+                        className="px-4 py-2 border border-stone-300 rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-50"
+                      >
+                        ← 前へ
+                      </button>
+
+                      <div className="flex gap-2">
+                        <button 
+                          type="button" 
+                          onClick={handleNextBook}
+                          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 rounded-xl text-xs font-bold transition"
+                        >
+                          + 次の本を追加
+                        </button>
+                        <button 
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => handleSubmit()}
+                          className="px-5 py-2 bg-stone-900 text-stone-50 rounded-xl text-xs font-bold hover:bg-stone-800 shadow-md disabled:opacity-50 transition"
+                        >
+                          {isSubmitting ? "保存中..." : isEditMode ? "変更を保存する" : "投稿を完了する"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </form>
+                )}
+
               </div>
             </div>
           )}
+
         </div>
       );
     }
