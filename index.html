@@ -10,7 +10,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-[#FBF9F5] text-stone-900 font-sans min-h-screen">
+<body class="bg-[#FBF9F5] text-stone-900 font-sans min-h-screen flex flex-col justify-between">
   <div id="root"></div>
 
   <script type="text/babel">
@@ -35,12 +35,13 @@
     const getMyRouteIds = () => {
       try {
         const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-        return raw.map(id => String(id)); // すべて文字列に統一
+        return raw.map(id => String(id));
       } catch {
         return [];
       }
     };
     const saveMyRouteId = (id) => {
+      if (!id) return getMyRouteIds();
       const ids = getMyRouteIds();
       const strId = String(id);
       if (!ids.includes(strId)) {
@@ -64,6 +65,7 @@
       const [selectedCategory, setSelectedCategory] = useState("すべて");
       const [currentRoute, setCurrentRoute] = useState(null);
       const [myRouteIds, setMyRouteIds] = useState([]);
+      const [isAdmin, setIsAdmin] = useState(false);
       
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [isEditMode, setIsEditMode] = useState(false);
@@ -178,6 +180,29 @@
         }
       };
 
+      // 救済機能：手動で端末に紐付ける
+      const handleClaimOwnership = (routeId) => {
+        const updated = saveMyRouteId(routeId);
+        setMyRouteIds(updated);
+        alert("この投稿をあなたの端末に紐付けました！編集・削除ボタンが使えるようになりました。");
+      };
+
+      // 管理者モード切替
+      const handleToggleAdmin = () => {
+        if (isAdmin) {
+          setIsAdmin(false);
+          alert("管理者モードを解除しました。");
+        } else {
+          const pass = prompt("管理者パスコードを入力してください（デフォルト: admin123）");
+          if (pass === "admin123") {
+            setIsAdmin(true);
+            alert("管理者モードを有効にしました。すべての投稿を編集・削除できます。");
+          } else if (pass !== null) {
+            alert("パスコードが違います。");
+          }
+        }
+      };
+
       const handleNextBook = () => {
         const current = newSteps[currentBookIndex];
         if (!current || !current.bookTitle.trim()) {
@@ -229,23 +254,17 @@
           };
 
           if (isEditMode) {
-            const { data, error } = await supabaseClient
+            const { error } = await supabaseClient
               .from('routes')
               .update(entryData)
-              .eq('id', editingId)
-              .select();
+              .eq('id', editingId);
 
             if (error) throw error;
 
-            if (data && data.length > 0) {
-              const updated = data[0];
-              setRoutes(prev => prev.map(r => r.id === editingId ? updated : r));
-              if (currentRoute && currentRoute.id === editingId) {
-                setCurrentRoute(updated);
-              }
-            }
+            await fetchRoutes();
             alert("更新しました！");
           } else {
+            // insert実行
             const { data, error } = await supabaseClient
               .from('routes')
               .insert([entryData])
@@ -253,12 +272,26 @@
 
             if (error) throw error;
 
+            // ID取得と保存を確実に実行
+            let newId = null;
             if (data && data.length > 0) {
-              const created = data[0];
-              const updatedIds = saveMyRouteId(created.id);
-              setMyRouteIds(updatedIds);
-              setRoutes(prev => [created, ...prev]);
+              newId = data[0].id;
+            } else {
+              // selectで返らない場合のバックアップ取得
+              const { data: latest } = await supabaseClient
+                .from('routes')
+                .select('id')
+                .order('created_at', { ascending: false })
+                .limit(1);
+              if (latest && latest.length > 0) newId = latest[0].id;
             }
+
+            if (newId) {
+              const updatedIds = saveMyRouteId(newId);
+              setMyRouteIds(updatedIds);
+            }
+
+            await fetchRoutes();
             alert("投稿しました！");
           }
 
@@ -277,7 +310,8 @@
       };
 
       return (
-        <div className="max-w-3xl mx-auto px-4 py-10">
+        <div className="max-w-3xl mx-auto px-4 py-10 flex-1 w-full">
+          {/* ヘッダー */}
           <header className="flex justify-between items-center mb-6 border-b border-stone-200 pb-4">
             <div>
               <h1 
@@ -296,6 +330,7 @@
             </button>
           </header>
 
+          {/* 💡 ガイド案内ボックス */}
           <div className="mb-6 p-4 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 space-y-2.5 leading-relaxed shadow-sm">
             <div className="flex items-start gap-2">
               <span className="font-bold text-stone-950 shrink-0">📖 投稿スタイルについて：</span>
@@ -306,16 +341,17 @@
             <div className="flex items-start gap-2 pt-2 border-t border-stone-100">
               <span className="font-bold text-stone-950 shrink-0">⚙️ 編集・削除について：</span>
               <span className="text-stone-900">
-                ログインやパスワードは不要です。<strong>投稿した端末（ブラウザ）からアクセスすると、自動的に「✎ 編集」「🗑 削除」ボタンが表示されます。</strong>
+                投稿した端末からアクセスすると自動で「✎ 編集」「🗑 削除」が表示されます。（※ボタンが出ない場合、詳細画面下の「🔑 自分の投稿に紐付ける」からいつでも有効化できます）
               </span>
             </div>
           </div>
 
           {currentRoute ? (
+            /* 詳細ビュー */
             (() => {
               const currentData = getRouteData(currentRoute);
               const isSequence = currentData.type === "sequence";
-              const isMine = myRouteIds.includes(String(currentRoute.id));
+              const isMine = myRouteIds.includes(String(currentRoute.id)) || isAdmin;
 
               return (
                 <div>
@@ -327,22 +363,33 @@
                       ← 一覧に戻る
                     </button>
 
-                    {isMine && (
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={(e) => handleStartEdit(currentRoute, e)}
-                          className="text-xs font-bold text-stone-800 bg-amber-50 border border-amber-300 hover:bg-amber-100 px-3 py-1.5 rounded-lg shadow-sm transition"
+                    <div className="flex gap-2 items-center">
+                      {isMine ? (
+                        <>
+                          <button 
+                            onClick={(e) => handleStartEdit(currentRoute, e)}
+                            className="text-xs font-bold text-stone-900 bg-amber-100 border border-amber-300 hover:bg-amber-200 px-3 py-1.5 rounded-lg shadow-sm transition"
+                          >
+                            ✎ 編集する
+                          </button>
+                          <button 
+                            onClick={(e) => handleDelete(currentRoute, e)}
+                            className="text-xs font-bold text-red-700 bg-red-100 border border-red-200 hover:bg-red-200 px-3 py-1.5 rounded-lg shadow-sm transition"
+                          >
+                            🗑 削除
+                          </button>
+                        </>
+                      ) : (
+                        /* 救済ボタン：ボタンが出ないときに手動紐付け */
+                        <button
+                          onClick={() => handleClaimOwnership(currentRoute.id)}
+                          className="text-[11px] font-semibold text-stone-600 bg-stone-100 hover:bg-stone-200 border border-stone-300 px-2.5 py-1.5 rounded-lg transition"
+                          title="この投稿をあなたの端末に紐付けて編集可能にします"
                         >
-                          ✎ 編集する
+                          🔑 自分の投稿に紐付ける
                         </button>
-                        <button 
-                          onClick={(e) => handleDelete(currentRoute, e)}
-                          className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg shadow-sm transition"
-                        >
-                          🗑 削除
-                        </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
 
                   <div className="bg-white border border-stone-200 rounded-xl p-6 mb-8 shadow-sm">
@@ -437,6 +484,7 @@
               );
             })()
           ) : (
+            /* 一覧ビュー */
             <div>
               <div className="flex gap-2 overflow-x-auto pb-4 mb-6 border-b border-stone-200">
                 {INITIAL_CATEGORIES.map(cat => (
@@ -465,7 +513,7 @@
                   {filteredRoutes.map(route => {
                     const routeData = getRouteData(route);
                     const isSequence = routeData.type === "sequence";
-                    const isMine = myRouteIds.includes(String(route.id));
+                    const isMine = myRouteIds.includes(String(route.id)) || isAdmin;
 
                     return (
                       <div 
@@ -497,18 +545,17 @@
                           <div className="text-right shrink-0 flex flex-col items-end">
                             <span className="text-[11px] text-stone-500 block">{route.author}</span>
                             
-                            {/* 一覧カード上にも編集・削除ボタンを配置 */}
                             {isMine ? (
                               <div className="flex gap-1.5 mt-2">
                                 <button
                                   onClick={(e) => handleStartEdit(route, e)}
-                                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-amber-50 text-amber-950 border border-amber-300 hover:bg-amber-100 shadow-sm transition"
+                                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200 shadow-sm transition"
                                 >
                                   ✎ 編集
                                 </button>
                                 <button
                                   onClick={(e) => handleDelete(route, e)}
-                                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 shadow-sm transition"
+                                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-red-100 text-red-700 border border-red-200 hover:bg-red-200 shadow-sm transition"
                                 >
                                   🗑
                                 </button>
@@ -771,6 +818,17 @@
               </div>
             </div>
           )}
+
+          {/* フッター（管理者モード切替） */}
+          <footer className="mt-12 text-center border-t border-stone-200 pt-6 text-[11px] text-stone-400 flex justify-center items-center gap-4">
+            <span>CuratePath © 2026</span>
+            <button 
+              onClick={handleToggleAdmin}
+              className={`hover:text-stone-700 underline ${isAdmin ? "text-amber-700 font-bold" : ""}`}
+            >
+              {isAdmin ? "🔓 管理者モード中 (解除)" : "🔐 管理者ログイン"}
+            </button>
+          </footer>
 
         </div>
       );
