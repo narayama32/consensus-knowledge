@@ -17,59 +17,28 @@
   <script type="text/babel">
     const { useState } = React;
 
-    const INITIAL_CATEGORIES = ["すべて", "経済学", "現代思想", "政治学", "科学哲学"];
+    const INITIAL_CATEGORIES = ["すべて", "経済学", "現代思想", "社会学", "政治学", "科学哲学"];
 
     const INITIAL_ROUTES = [
       {
         id: 1,
-        category: "経済学",
-        title: "数式を避けて直感から掴むミクロ・マクロ経済学",
-        targetAudience: "経済学に興味があるが、数式アレルギーの初学者",
+        category: "現代思想",
+        title: "消費社会のリアリティを解読するルート",
+        targetAudience: "記号消費や現代カルチャーの構造を理論的に分析したい人",
         author: "T. Nakamura",
         steps: [
           {
             step: 1,
-            bookTitle: "経済学の思考法",
-            author: "木下 栄蔵",
-            coverUrl: "https://books.google.com/books/content?id=mock1&printsec=frontcover&img=1&zoom=1",
-            intent: "まずは専門用語や数式を使わず、「インセンティブ」や「機会費用」といった経済学特有のものの見方・直感を養うため。"
+            bookTitle: "消費社会の神話と構造",
+            author: "ジャン・ボードリヤール",
+            coverUrl: "https://cover.openbd.jp/9784326100742.jpg",
+            intent: "モノではなく「差異の記号」を消費しているという現代社会の基本構造を掴むための必読原典。"
           },
           {
             step: 2,
-            bookTitle: "マンキュー入門経済学",
-            author: "N・グレゴリー・マンキュー",
-            coverUrl: "",
-            intent: "1冊目の直感をベースに、標準的な理論の骨組み（市場メカニズムや景気循環）を体系的に俯瞰する。"
-          },
-          {
-            step: 3,
-            bookTitle: "ヤバい経済学",
-            author: "スティーヴン・レヴィット",
-            coverUrl: "",
-            intent: "身につけた理論が現実社会のデータや人間行動とどう結びついているのか、実証的な面白さを知って定着させる。"
-          }
-        ]
-      },
-      {
-        id: 2,
-        category: "経済学",
-        title: "思想史からたどる資本主義の変遷ルート",
-        targetAudience: "理論だけでなく、歴史的・思想的背景から理解したい人",
-        author: "K. Sato",
-        steps: [
-          {
-            step: 1,
-            bookTitle: "国富論",
-            author: "アダム・スミス",
-            coverUrl: "",
-            intent: "自由市場と分業の原点。なぜ市場が機能すると考えられたのか、根本の問題意識を押さえる。"
-          },
-          {
-            step: 2,
-            bookTitle: "資本論 入門",
-            author: "カール・マルクス",
-            coverUrl: "",
-            intent: "スミス流の市場経済が抱える矛盾や労働の疎外を、対立軸として理解する。"
+            bookTitle: "動物化するポストモダン",
+            author: "東浩紀",
+            intent: "ボードリヤール的な記号消費モデルがオタクカルチャーや情報環境でどう変容したかを接続して理解する。"
           }
         ]
       }
@@ -81,8 +50,7 @@
       const [currentRoute, setCurrentRoute] = useState(null);
       const [isModalOpen, setIsModalOpen] = useState(false);
 
-      // 新規投稿ステート
-      const [newCategory, setNewCategory] = useState("経済学");
+      const [newCategory, setNewCategory] = useState("現代思想");
       const [newTitle, setNewTitle] = useState("");
       const [newTarget, setNewTarget] = useState("");
       const [newAuthor, setNewAuthor] = useState("");
@@ -95,12 +63,11 @@
         ? routes 
         : routes.filter(r => r.category === selectedCategory);
 
-      // 書籍検索処理（堅牢化版）
+      // 書籍検索（CORSプロキシ・複数エンドポイント対応）
       const handleSearchBook = async (idx) => {
         const query = newSteps[idx].searchQuery.trim();
         if (!query) return;
 
-        // 検索中ステートへ更新
         setNewSteps(prev => prev.map((s, i) => i === idx ? { 
           ...s, 
           isSearching: true, 
@@ -109,8 +76,16 @@
         } : s));
 
         try {
-          const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`);
-          if (!res.ok) throw new Error("API通信エラー");
+          // 安定して取得できるGoogle Books CORSミラーエンドポイントを使用
+          const targetUrl = `https://corsproxy.io/?url=${encodeURIComponent(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=6`)}`;
+          
+          let res = await fetch(targetUrl);
+          
+          // プロキシが混雑している場合は直接フォールバック
+          if (!res.ok) {
+            res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=6`);
+          }
+          
           const data = await res.json();
           
           if (!data.items || data.items.length === 0) {
@@ -118,7 +93,7 @@
               ...s, 
               isSearching: false, 
               searchResults: [], 
-              searchMessage: "該当する書籍が見つかりませんでした。" 
+              searchMessage: "該当する書籍が見つかりませんでした。タイトル欄に直接手入力してください。" 
             } : s));
             return;
           }
@@ -130,7 +105,7 @@
               thumb = (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail || "").replace("http://", "https://");
             }
             return {
-              title: info.title || "名称不明",
+              title: info.title || query,
               author: (info.authors && info.authors.join(", ")) || (info.publisher ? `${info.publisher} 出版` : "著者不明"),
               coverUrl: thumb
             };
@@ -144,17 +119,18 @@
           } : s));
 
         } catch (error) {
-          console.error("書籍検索エラー:", error);
+          console.warn("API通信エラー:", error);
+          // 通信失敗時でも入力キーワードを即座にタイトルへセット
           setNewSteps(prev => prev.map((s, i) => i === idx ? { 
             ...s, 
             isSearching: false, 
+            bookTitle: query,
             searchResults: [], 
-            searchMessage: "検索に失敗しました。直接手入力してください。" 
+            searchMessage: `通信が制限されたため「${query}」をタイトル欄にセットしました。著者名を手入力してください。` 
           } : s));
         }
       };
 
-      // 検索結果から本を選択
       const handleSelectBook = (stepIdx, book) => {
         setNewSteps(prev => prev.map((s, i) => i === stepIdx ? {
           ...s,
@@ -380,7 +356,7 @@
                     <input 
                       type="text" 
                       required
-                      placeholder="例: 数式なしで直感から掴むミクロ・マクロ経済学" 
+                      placeholder="例: 記号消費から読み解くポストモダン思想" 
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
                       className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs text-stone-800"
@@ -392,7 +368,7 @@
                     <input 
                       type="text" 
                       required
-                      placeholder="例: 独学で経済学の基本概念を理解したい人向け" 
+                      placeholder="例: 現代思想・カルチャー批判の足がかりを掴みたい人向け" 
                       value={newTarget}
                       onChange={(e) => setNewTarget(e.target.value)}
                       className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs text-stone-800"
@@ -414,7 +390,7 @@
                           <div className="flex gap-2">
                             <input 
                               type="text" 
-                              placeholder="本名や著者名を入力（例: マンキュー）" 
+                              placeholder="本名や著者名を入力（例: 消費社会の神話と構造）" 
                               value={step.searchQuery}
                               onChange={(e) => {
                                 const val = e.target.value;
@@ -438,22 +414,22 @@
                             </button>
                           </div>
 
-                          {/* 検索メッセージ（0件やエラー時） */}
+                          {/* メッセージ */}
                           {step.searchMessage && (
-                            <div className="text-[11px] text-amber-700 mt-1 px-1">
+                            <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/60 p-2 rounded mt-1">
                               {step.searchMessage}
                             </div>
                           )}
 
-                          {/* 検索候補ドロップダウン */}
+                          {/* 検索候補リスト */}
                           {step.searchResults.length > 0 && (
-                            <div className="bg-white border border-stone-300 rounded-md shadow-lg mt-1 p-2 space-y-2 max-h-48 overflow-y-auto">
+                            <div className="bg-white border border-stone-300 rounded-md shadow-lg mt-1 p-2 space-y-1.5 max-h-48 overflow-y-auto">
                               <span className="text-[10px] text-stone-400 block px-1">候補を選択してください：</span>
                               {step.searchResults.map((book, bIdx) => (
                                 <div 
                                   key={bIdx}
                                   onClick={() => handleSelectBook(idx, book)}
-                                  className="flex items-center gap-2 p-1.5 hover:bg-stone-100 rounded cursor-pointer transition text-left"
+                                  className="flex items-center gap-2.5 p-1.5 hover:bg-stone-100 rounded cursor-pointer transition text-left"
                                 >
                                   {book.coverUrl ? (
                                     <img src={book.coverUrl} alt="" className="w-8 h-10 object-cover rounded border border-stone-200 shrink-0 bg-stone-50" />
@@ -470,7 +446,7 @@
                           )}
                         </div>
 
-                        {/* 本のタイトル・著者名（手動入力も可） */}
+                        {/* 本のタイトル・著者名 */}
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <input 
                             type="text" 
