@@ -34,20 +34,28 @@
     const STORAGE_KEY = "curatepath_my_route_ids";
     const getMyRouteIds = () => {
       try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        return raw.map(id => String(id)); // すべて文字列に統一
       } catch {
         return [];
       }
     };
     const saveMyRouteId = (id) => {
       const ids = getMyRouteIds();
-      if (!ids.includes(id)) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids, id]));
+      const strId = String(id);
+      if (!ids.includes(strId)) {
+        const updated = [...ids, strId];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        return updated;
       }
+      return ids;
     };
     const removeMyRouteId = (id) => {
       const ids = getMyRouteIds();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(ids.filter(item => item !== id)));
+      const strId = String(id);
+      const updated = ids.filter(item => item !== strId);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      return updated;
     };
 
     function App() {
@@ -57,7 +65,6 @@
       const [currentRoute, setCurrentRoute] = useState(null);
       const [myRouteIds, setMyRouteIds] = useState([]);
       
-      // モーダル & ステップ管理
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [isEditMode, setIsEditMode] = useState(false);
       const [editingId, setEditingId] = useState(null);
@@ -65,14 +72,13 @@
       const [wizardStep, setWizardStep] = useState(0);
       const [currentBookIndex, setCurrentBookIndex] = useState(0);
 
-      // フォーム入力値
       const [formatType, setFormatType] = useState("parallel"); 
       const [newCategory, setNewCategory] = useState("近代哲学");
       const [newTitle, setNewTitle] = useState("");
       const [newTarget, setNewTarget] = useState("");
       const [newAuthor, setNewAuthor] = useState("");
       const [newSteps, setNewSteps] = useState([
-        { step: 1, bookTitle: "", author: "", intent: "" }
+        { step: 1, bookTitle: "", author: "", isbn: "", intent: "" }
       ]);
 
       const fetchRoutes = async () => {
@@ -125,12 +131,13 @@
         setNewTarget("");
         setNewAuthor("");
         setNewSteps([
-          { step: 1, bookTitle: "", author: "", intent: "" }
+          { step: 1, bookTitle: "", author: "", isbn: "", intent: "" }
         ]);
         setIsModalOpen(true);
       };
 
-      const handleStartEdit = (route) => {
+      const handleStartEdit = (route, e) => {
+        if (e) e.stopPropagation();
         const routeData = getRouteData(route);
         setIsEditMode(true);
         setEditingId(route.id);
@@ -142,12 +149,13 @@
         setNewTarget(route.target_audience || "");
         setNewAuthor(route.author || "");
         setNewSteps(routeData.items.length > 0 ? routeData.items : [
-          { step: 1, bookTitle: "", author: "", intent: "" }
+          { step: 1, bookTitle: "", author: "", isbn: "", intent: "" }
         ]);
         setIsModalOpen(true);
       };
 
-      const handleDelete = async (route) => {
+      const handleDelete = async (route, e) => {
+        if (e) e.stopPropagation();
         if (!window.confirm(`「${route.title}」を本当に削除しますか？`)) return;
 
         try {
@@ -158,8 +166,8 @@
 
           if (error) throw error;
 
-          removeMyRouteId(route.id);
-          setMyRouteIds(getMyRouteIds());
+          const updatedIds = removeMyRouteId(route.id);
+          setMyRouteIds(updatedIds);
           setRoutes(prev => prev.filter(r => r.id !== route.id));
           if (currentRoute && currentRoute.id === route.id) {
             setCurrentRoute(null);
@@ -182,7 +190,7 @@
         } else {
           setNewSteps([
             ...newSteps,
-            { step: newSteps.length + 1, bookTitle: "", author: "", intent: "" }
+            { step: newSteps.length + 1, bookTitle: "", author: "", isbn: "", intent: "" }
           ]);
           setCurrentBookIndex(newSteps.length);
         }
@@ -206,6 +214,7 @@
 
         const stepsWithFormat = validSteps.map((s) => ({
           ...s,
+          isbn: s.isbn ? s.isbn.replace(/[^0-9X]/gi, '') : '',
           _formatType: formatType
         }));
 
@@ -246,9 +255,9 @@
 
             if (data && data.length > 0) {
               const created = data[0];
-              saveMyRouteId(created.id);
-              setMyRouteIds(getMyRouteIds());
-              setRoutes([created, ...routes]);
+              const updatedIds = saveMyRouteId(created.id);
+              setMyRouteIds(updatedIds);
+              setRoutes(prev => [created, ...prev]);
             }
             alert("投稿しました！");
           }
@@ -261,9 +270,14 @@
         }
       };
 
+      const getCoverUrl = (isbn) => {
+        if (!isbn) return null;
+        const cleanIsbn = isbn.replace(/[^0-9X]/gi, '');
+        return cleanIsbn ? `https://cover.openbd.jp/${cleanIsbn}.jpg` : null;
+      };
+
       return (
         <div className="max-w-3xl mx-auto px-4 py-10">
-          {/* ヘッダー */}
           <header className="flex justify-between items-center mb-6 border-b border-stone-200 pb-4">
             <div>
               <h1 
@@ -282,7 +296,6 @@
             </button>
           </header>
 
-          {/* 💡 ガイド案内ボックス */}
           <div className="mb-6 p-4 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 space-y-2.5 leading-relaxed shadow-sm">
             <div className="flex items-start gap-2">
               <span className="font-bold text-stone-950 shrink-0">📖 投稿スタイルについて：</span>
@@ -296,16 +309,13 @@
                 ログインやパスワードは不要です。<strong>投稿した端末（ブラウザ）からアクセスすると、自動的に「✎ 編集」「🗑 削除」ボタンが表示されます。</strong>
               </span>
             </div>
-            <div className="flex items-start gap-2 pt-2 border-t border-stone-100 text-stone-800 text-[11px] font-medium">
-              <span>※ 分野の分類に気を遣う必要はあまりありません。一番近いと感じるカテゴリをお気軽にお選びください。</span>
-            </div>
           </div>
 
           {currentRoute ? (
-            /* 詳細ビュー */
             (() => {
               const currentData = getRouteData(currentRoute);
               const isSequence = currentData.type === "sequence";
+              const isMine = myRouteIds.includes(String(currentRoute.id));
 
               return (
                 <div>
@@ -317,17 +327,17 @@
                       ← 一覧に戻る
                     </button>
 
-                    {myRouteIds.includes(currentRoute.id) && (
+                    {isMine && (
                       <div className="flex gap-2">
                         <button 
-                          onClick={() => handleStartEdit(currentRoute)}
-                          className="text-xs font-semibold text-stone-800 bg-white border border-stone-300 hover:bg-stone-50 px-3 py-1.5 rounded-lg shadow-sm transition"
+                          onClick={(e) => handleStartEdit(currentRoute, e)}
+                          className="text-xs font-bold text-stone-800 bg-amber-50 border border-amber-300 hover:bg-amber-100 px-3 py-1.5 rounded-lg shadow-sm transition"
                         >
                           ✎ 編集する
                         </button>
                         <button 
-                          onClick={() => handleDelete(currentRoute)}
-                          className="text-xs font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg shadow-sm transition"
+                          onClick={(e) => handleDelete(currentRoute, e)}
+                          className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg shadow-sm transition"
                         >
                           🗑 削除
                         </button>
@@ -343,6 +353,11 @@
                       <span className="text-xs font-medium px-2 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200">
                         {isSequence ? "順序ルート" : "並列リスト"}
                       </span>
+                      {isMine && (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-stone-900 text-stone-50">
+                          あなたの投稿
+                        </span>
+                      )}
                     </div>
                     <h2 className="text-xl font-bold text-stone-900 mt-3 font-serif">{currentRoute.title}</h2>
                     <div className="mt-4 pt-4 border-t border-stone-100 flex flex-wrap justify-between text-xs text-stone-700 gap-2">
@@ -356,43 +371,72 @@
                       {isSequence ? `選書ロードマップ（全 ${currentData.items.length} 冊）` : `おすすめ選書リスト（全 ${currentData.items.length} 冊）`}
                     </h3>
 
-                    {currentData.items.map((item, index) => (
-                      <div key={index} className="relative">
-                        {isSequence && index < currentData.items.length - 1 && (
-                          <div className="absolute left-6 top-16 bottom-0 w-0.5 bg-stone-300 -mb-6 z-0"></div>
-                        )}
+                    {currentData.items.map((item, index) => {
+                      const coverUrl = getCoverUrl(item.isbn);
 
-                        <div className="relative z-10 bg-white border border-stone-200/90 rounded-xl p-6 shadow-sm hover:shadow transition">
-                          <div className="flex items-start gap-4">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-sm ${
-                              isSequence ? "bg-stone-900 text-stone-50" : "bg-amber-100 text-amber-950 border border-amber-300"
-                            }`}>
-                              {isSequence ? item.step : index + 1}
-                            </div>
+                      return (
+                        <div key={index} className="relative">
+                          {isSequence && index < currentData.items.length - 1 && (
+                            <div className="absolute left-6 top-20 bottom-0 w-0.5 bg-stone-300 -mb-6 z-0"></div>
+                          )}
 
-                            <div className="flex-1 min-w-0">
-                              <div className="flex flex-wrap items-baseline gap-2">
-                                <h4 className="text-base font-bold text-stone-900 font-serif leading-snug">{item.bookTitle}</h4>
-                                {item.author && <span className="text-xs text-stone-600">（著: {item.author}）</span>}
+                          <div className="relative z-10 bg-white border border-stone-200 rounded-xl p-5 sm:p-6 shadow-sm hover:shadow transition">
+                            <div className="flex flex-col sm:flex-row gap-5 items-start">
+                              
+                              <div className="w-full sm:w-[28%] shrink-0 flex flex-col items-center">
+                                <div className="relative w-28 sm:w-full max-w-[140px] aspect-[2/3] bg-stone-100 rounded-lg overflow-hidden border border-stone-200 shadow-sm flex items-center justify-center">
+                                  {coverUrl ? (
+                                    <img 
+                                      src={coverUrl} 
+                                      alt={item.bookTitle}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        e.target.onerror = null;
+                                        e.target.style.display = 'none';
+                                        e.target.nextSibling.style.display = 'flex';
+                                      }}
+                                    />
+                                  ) : null}
+                                  <div 
+                                    className={`w-full h-full p-2 flex flex-col items-center justify-center text-center text-stone-400 text-xs ${coverUrl ? 'hidden' : 'flex'}`}
+                                  >
+                                    <span className="text-xl mb-1">📖</span>
+                                    <span className="text-[10px] line-clamp-2 text-stone-500 font-medium leading-tight">{item.bookTitle}</span>
+                                  </div>
+                                </div>
+                                <div className="mt-2 text-center">
+                                  <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded ${
+                                    isSequence ? "bg-stone-900 text-stone-50" : "bg-amber-100 text-amber-950 border border-amber-300"
+                                  }`}>
+                                    {isSequence ? `Step ${item.step}` : `Book ${index + 1}`}
+                                  </span>
+                                </div>
                               </div>
 
-                              <div className="mt-3 bg-[#FBF9F5] p-4 rounded-lg border border-stone-200 text-sm text-stone-900 leading-relaxed whitespace-pre-wrap">
-                                <span className="text-xs font-bold text-amber-950 block mb-1.5">
-                                  {isSequence ? "【この順番にした意図・接続の理由】" : "【おすすめの理由・見どころ】"}
-                                </span>
-                                {item.intent}
+                              <div className="flex-1 min-w-0 w-full">
+                                <div className="flex flex-wrap items-baseline gap-2">
+                                  <h4 className="text-base sm:text-lg font-bold text-stone-900 font-serif leading-snug">{item.bookTitle}</h4>
+                                  {item.author && <span className="text-xs text-stone-600 font-medium">（著: {item.author}）</span>}
+                                </div>
+
+                                <div className="mt-3 bg-[#FBF9F5] p-4 rounded-xl border border-stone-200 text-xs sm:text-sm text-stone-900 leading-relaxed whitespace-pre-wrap">
+                                  <span className="text-xs font-bold text-amber-950 block mb-1.5">
+                                    {isSequence ? "【この順番にした意図・接続の理由】" : "【おすすめの理由・見どころ】"}
+                                  </span>
+                                  {item.intent}
+                                </div>
                               </div>
+
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
             })()
           ) : (
-            /* 一覧ビュー */
             <div>
               <div className="flex gap-2 overflow-x-auto pb-4 mb-6 border-b border-stone-200">
                 {INITIAL_CATEGORIES.map(cat => (
@@ -421,15 +465,16 @@
                   {filteredRoutes.map(route => {
                     const routeData = getRouteData(route);
                     const isSequence = routeData.type === "sequence";
+                    const isMine = myRouteIds.includes(String(route.id));
 
                     return (
                       <div 
                         key={route.id}
                         onClick={() => setCurrentRoute(route)}
-                        className="bg-white hover:border-stone-300 border border-stone-200 p-5 rounded-xl shadow-sm hover:shadow transition cursor-pointer"
+                        className="bg-white hover:border-stone-400 border border-stone-200 p-5 rounded-xl shadow-sm hover:shadow transition cursor-pointer"
                       >
                         <div className="flex justify-between items-start gap-4">
-                          <div>
+                          <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-950 border border-amber-200/60">
                                 {route.category}
@@ -437,8 +482,8 @@
                               <span className="text-[10px] text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200">
                                 {isSequence ? "順序ルート" : "並列リスト"}
                               </span>
-                              {myRouteIds.includes(route.id) && (
-                                <span className="text-[10px] bg-stone-900 text-stone-100 px-1.5 py-0.5 rounded font-medium">
+                              {isMine && (
+                                <span className="text-[10px] bg-stone-900 text-stone-50 px-2 py-0.5 rounded font-bold">
                                   あなたの投稿
                                 </span>
                               )}
@@ -448,11 +493,31 @@
                             </h2>
                             <p className="text-xs text-stone-600 mt-1">テーマ・関心: {route.target_audience}</p>
                           </div>
-                          <div className="text-right shrink-0">
+                          
+                          <div className="text-right shrink-0 flex flex-col items-end">
                             <span className="text-[11px] text-stone-500 block">{route.author}</span>
-                            <span className="text-xs font-bold text-stone-800 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200 inline-block mt-2">
-                              {routeData.items.length} 冊 {isSequence ? "ルート →" : "リスト →"}
-                            </span>
+                            
+                            {/* 一覧カード上にも編集・削除ボタンを配置 */}
+                            {isMine ? (
+                              <div className="flex gap-1.5 mt-2">
+                                <button
+                                  onClick={(e) => handleStartEdit(route, e)}
+                                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-amber-50 text-amber-950 border border-amber-300 hover:bg-amber-100 shadow-sm transition"
+                                >
+                                  ✎ 編集
+                                </button>
+                                <button
+                                  onClick={(e) => handleDelete(route, e)}
+                                  className="text-[11px] font-bold px-2.5 py-1 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 shadow-sm transition"
+                                >
+                                  🗑
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-xs font-bold text-stone-800 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200 inline-block mt-2">
+                                {routeData.items.length} 冊 {isSequence ? "ルート →" : "リスト →"}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -463,12 +528,11 @@
             </div>
           )}
 
-          {/* 🌟 画面中央のステップ式投稿モーダル（縦長に上下拡張 & コメント欄最大化） */}
+          {/* 投稿 / 編集モーダル */}
           {isModalOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
               <div className="bg-white rounded-2xl max-w-lg w-full h-[85vh] min-h-[580px] max-h-[760px] p-5 sm:p-7 shadow-2xl border border-stone-200 flex flex-col justify-between transition-all">
                 
-                {/* ヘッダー（固定） */}
                 <div className="flex justify-between items-center border-b border-stone-100 pb-3 shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold px-2.5 py-1 rounded bg-stone-900 text-stone-50 shadow-sm">
@@ -486,11 +550,9 @@
                   </button>
                 </div>
 
-                {/* 画面1：基本設定（分野 ＆ 並列/ルートの選択） */}
                 {wizardStep === 0 && (
                   <div className="flex-1 flex flex-col justify-between py-2 space-y-3 overflow-y-auto">
                     <div className="space-y-4">
-                      {/* 分野選択 */}
                       <div className="p-3.5 bg-stone-100/80 rounded-xl border border-stone-300">
                         <div className="flex items-center justify-between mb-2">
                           <label className="text-xs font-black text-stone-950 flex items-center gap-1.5">
@@ -510,7 +572,6 @@
                         </select>
                       </div>
 
-                      {/* スタイル選択 */}
                       <div>
                         <label className="block text-xs font-bold text-stone-900 mb-1.5">
                           2. 投稿スタイルを選択
@@ -548,7 +609,6 @@
                         </div>
                       </div>
 
-                      {/* タイトルと想定読者 */}
                       <div className="pt-2 border-t border-stone-100 space-y-3">
                         <div>
                           <label className="block text-xs font-bold text-stone-900 mb-1">
@@ -614,10 +674,10 @@
                   </div>
                 )}
 
-                {/* 画面2：本の入力（上下拡張＆コメント欄を最大限に拡大） */}
                 {wizardStep === 1 && (
                   <div className="flex-1 flex flex-col justify-between py-2 space-y-3">
                     <div className="flex-1 flex flex-col space-y-3">
+                      
                       <div className="grid grid-cols-2 gap-2.5 shrink-0">
                         <div>
                           <label className="block text-xs font-bold text-stone-900 mb-1">本のタイトル *</label>
@@ -642,7 +702,23 @@
                         </div>
                       </div>
 
-                      {/* コメント欄（flex-1 で余った縦幅をすべて使って最大化） */}
+                      <div className="shrink-0">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-xs font-bold text-stone-900 flex items-center gap-1">
+                            <span>ISBNコード</span>
+                            <span className="text-[10px] text-stone-500 font-normal">（任意：表紙画像を表示）</span>
+                          </label>
+                          <span className="text-[10px] text-stone-400">13桁 / ハイフン可</span>
+                        </div>
+                        <input 
+                          type="text" 
+                          placeholder="例: 9784003360118" 
+                          value={newSteps[currentBookIndex]?.isbn || ""}
+                          onChange={(e) => handleStepChange(currentBookIndex, "isbn", e.target.value)}
+                          className="w-full border border-stone-300 rounded-xl px-3 py-1.5 text-xs text-stone-900 font-mono focus:outline-none focus:border-stone-900"
+                        />
+                      </div>
+
                       <div className="flex-1 flex flex-col min-h-0">
                         <div className="flex justify-between items-center mb-1 shrink-0">
                           <label className="text-xs font-bold text-stone-900">
@@ -653,11 +729,11 @@
                         <textarea 
                           required
                           placeholder={formatType === "parallel" 
-                            ? "例: 現代思想を学ぶ上で最も切れ味鋭い入門書。デリダやドゥルーズに入る前の足がかりとして最適です。特に第2章の解説が明快で、初学者がつまずきやすい概念を鮮やかに整理してくれます。" 
-                            : "例: 1冊目の主観の出発点を踏まえ、理性の限界を規定する2冊目へスムーズに接続するため。この本で提示された疑問が次のステップで深められます。"}
+                            ? "例: 現代思想を学ぶ上で最も切れ味鋭い入門書。デリダやドゥルーズに入る前の足がかりとして最適です。" 
+                            : "例: 1冊目の主観の出発点を踏まえ、理性の限界を規定する2冊目へスムーズに接続するため。"}
                           value={newSteps[currentBookIndex]?.intent || ""}
                           onChange={(e) => handleStepChange(currentBookIndex, "intent", e.target.value)}
-                          className="w-full flex-1 min-h-[240px] sm:min-h-[280px] border border-stone-300 rounded-xl p-3.5 text-xs sm:text-sm text-stone-900 leading-relaxed focus:outline-none focus:border-stone-900 resize-none font-normal"
+                          className="w-full flex-1 min-h-[160px] border border-stone-300 rounded-xl p-3.5 text-xs sm:text-sm text-stone-900 leading-relaxed focus:outline-none focus:border-stone-900 resize-none font-normal"
                         />
                       </div>
                     </div>
