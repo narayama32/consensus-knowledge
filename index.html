@@ -32,6 +32,8 @@
     ];
 
     const STORAGE_KEY = "curatepath_my_route_ids";
+    const LIKED_STORAGE_KEY = "curatepath_liked_route_ids";
+
     const getMyRouteIds = () => {
       try {
         const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
@@ -59,7 +61,25 @@
       return updated;
     };
 
-    // 書籍カード（画像がある時だけ横並び、ない時はテキスト全幅）
+    const getLikedRouteIds = () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LIKED_STORAGE_KEY)) || [];
+        return raw.map(id => String(id));
+      } catch {
+        return [];
+      }
+    };
+    const saveLikedRouteId = (id) => {
+      const ids = getLikedRouteIds();
+      const strId = String(id);
+      if (!ids.includes(strId)) {
+        const updated = [...ids, strId];
+        localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(updated));
+        return updated;
+      }
+      return ids;
+    };
+
     function BookCard({ item, index, isSequence }) {
       const [imgSrc, setImgSrc] = useState(null);
       const [hasImage, setHasImage] = useState(false);
@@ -76,7 +96,6 @@
           return;
         }
 
-        // 1. openBD を試す
         const openBdUrl = `https://cover.openbd.jp/${cleanIsbn}.jpg`;
         const testImg = new Image();
         testImg.src = openBdUrl;
@@ -94,7 +113,6 @@
           tryGoogleBooks(cleanIsbn);
         };
 
-        // 2. フォールバック: Google Books API
         const tryGoogleBooks = async (isbn) => {
           try {
             const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
@@ -115,8 +133,6 @@
       return (
         <div className="relative z-10 bg-white border border-stone-200 rounded-xl p-5 sm:p-6 shadow-sm hover:shadow transition">
           <div className={hasImage ? "flex flex-col sm:flex-row gap-5 items-start" : "space-y-3"}>
-            
-            {/* 画像が存在する場合のみ表示される画像カラム */}
             {hasImage && (
               <div className="w-full sm:w-[28%] shrink-0 flex flex-col items-center">
                 <div className="relative w-28 sm:w-full max-w-[130px] aspect-[2/3] bg-stone-100 rounded-lg overflow-hidden border border-stone-200 shadow-sm">
@@ -136,10 +152,8 @@
               </div>
             )}
 
-            {/* テキスト領域（画像がない場合は横幅100%を使用） */}
             <div className="flex-1 min-w-0 w-full">
               <div className="flex items-center gap-2.5 flex-wrap">
-                {/* 画像がない場合はタイトルの前にバッジを配置 */}
                 {!hasImage && (
                   <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded ${
                     isSequence ? "bg-stone-900 text-stone-50" : "bg-amber-100 text-amber-950 border border-amber-300"
@@ -158,7 +172,6 @@
                 {item.intent}
               </div>
             </div>
-
           </div>
         </div>
       );
@@ -170,6 +183,7 @@
       const [selectedCategory, setSelectedCategory] = useState("すべて");
       const [currentRoute, setCurrentRoute] = useState(null);
       const [myRouteIds, setMyRouteIds] = useState([]);
+      const [likedRouteIds, setLikedRouteIds] = useState([]);
       const [isAdmin, setIsAdmin] = useState(false);
       
       const [isModalOpen, setIsModalOpen] = useState(false);
@@ -208,6 +222,7 @@
       useEffect(() => {
         fetchRoutes();
         setMyRouteIds(getMyRouteIds());
+        setLikedRouteIds(getLikedRouteIds());
       }, []);
 
       const filteredRoutes = selectedCategory === "すべて" 
@@ -289,6 +304,39 @@
         const updated = saveMyRouteId(routeId);
         setMyRouteIds(updated);
         alert("この投稿をあなたの端末に紐付けました！編集・削除ボタンが使えるようになりました。");
+      };
+
+      const handleLike = async (route, e) => {
+        if (e) e.stopPropagation();
+        const strId = String(route.id);
+        const alreadyLiked = likedRouteIds.includes(strId);
+        
+        const currentCount = route.likes_count || 0;
+        const newCount = alreadyLiked ? Math.max(0, currentCount - 1) : currentCount + 1;
+
+        setRoutes(prev => prev.map(r => r.id === route.id ? { ...r, likes_count: newCount } : r));
+        if (currentRoute && currentRoute.id === route.id) {
+          setCurrentRoute(prev => ({ ...prev, likes_count: newCount }));
+        }
+
+        let updatedLiked;
+        if (alreadyLiked) {
+          const filtered = likedRouteIds.filter(id => id !== strId);
+          localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(filtered));
+          updatedLiked = filtered;
+        } else {
+          updatedLiked = saveLikedRouteId(route.id);
+        }
+        setLikedRouteIds(updatedLiked);
+
+        try {
+          await supabaseClient
+            .from('routes')
+            .update({ likes_count: newCount })
+            .eq('id', route.id);
+        } catch (err) {
+          console.log("Like count updated locally:", err.message);
+        }
       };
 
       const handleToggleAdmin = () => {
@@ -404,6 +452,7 @@
 
       return (
         <div className="max-w-3xl mx-auto px-4 py-10 flex-1 w-full">
+          {/* ヘッダー（キャッチコピーを赤色で強調） */}
           <header className="flex justify-between items-center mb-6 border-b border-stone-200 pb-4">
             <div>
               <h1 
@@ -412,7 +461,9 @@
               >
                 CuratePath
               </h1>
-              <p className="text-xs text-stone-600 mt-1 font-medium">自分のおすすめの本をコメント付きで投稿して、初学者の道を照らそう！</p>
+              <p className="text-xs text-red-600 font-bold mt-1 tracking-wide">
+                自分のおすすめの本をコメント付きで投稿して、初学者の道を照らそう！
+              </p>
             </div>
             <button 
               onClick={handleOpenCreate}
@@ -443,6 +494,7 @@
               const currentData = getRouteData(currentRoute);
               const isSequence = currentData.type === "sequence";
               const isMine = myRouteIds.includes(String(currentRoute.id)) || isAdmin;
+              const isLiked = likedRouteIds.includes(String(currentRoute.id));
 
               return (
                 <div>
@@ -455,6 +507,18 @@
                     </button>
 
                     <div className="flex gap-2 items-center">
+                      <button
+                        onClick={(e) => handleLike(currentRoute, e)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                          isLiked 
+                            ? "bg-amber-100 border-amber-300 text-amber-950 shadow-sm" 
+                            : "bg-white border-stone-300 text-stone-700 hover:bg-stone-50"
+                        }`}
+                      >
+                        <span>👍</span>
+                        <span>{currentRoute.likes_count || 0}</span>
+                      </button>
+
                       {isMine ? (
                         <>
                           <button 
@@ -551,12 +615,13 @@
                     const routeData = getRouteData(route);
                     const isSequence = routeData.type === "sequence";
                     const isMine = myRouteIds.includes(String(route.id)) || isAdmin;
+                    const isLiked = likedRouteIds.includes(String(route.id));
 
                     return (
                       <div 
                         key={route.id}
                         onClick={() => setCurrentRoute(route)}
-                        className="bg-white hover:border-stone-400 border border-stone-200 p-5 rounded-xl shadow-sm hover:shadow transition cursor-pointer"
+                        className="bg-white hover:border-stone-400 border border-stone-200 p-5 rounded-xl shadow-sm hover:shadow transition cursor-pointer flex flex-col justify-between"
                       >
                         <div className="flex justify-between items-start gap-4">
                           <div className="flex-1">
@@ -582,7 +647,7 @@
                           <div className="text-right shrink-0 flex flex-col items-end">
                             <span className="text-[11px] text-stone-500 block">{route.author}</span>
                             
-                            {isMine ? (
+                            {isMine && (
                               <div className="flex gap-1.5 mt-2">
                                 <button
                                   onClick={(e) => handleStartEdit(route, e)}
@@ -597,12 +662,27 @@
                                   🗑
                                 </button>
                               </div>
-                            ) : (
-                              <span className="text-xs font-bold text-stone-800 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200 inline-block mt-2">
-                                {routeData.items.length} 冊 {isSequence ? "ルート →" : "リスト →"}
-                              </span>
                             )}
                           </div>
+                        </div>
+
+                        {/* カード下部バー（冊数バッジ & Discord風リアクション） */}
+                        <div className="mt-4 pt-3 border-t border-stone-100 flex justify-between items-center">
+                          <span className="text-[11px] font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                            {routeData.items.length} 冊 {isSequence ? "ルート" : "リスト"}
+                          </span>
+
+                          <button
+                            onClick={(e) => handleLike(route, e)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition active:scale-95 ${
+                              isLiked
+                                ? "bg-amber-100 border-amber-300 text-amber-950 shadow-xs"
+                                : "bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100 hover:border-stone-300"
+                            }`}
+                          >
+                            <span className="text-xs">👍</span>
+                            <span className="text-[11px] font-bold">{route.likes_count || 0}</span>
+                          </button>
                         </div>
                       </div>
                     );
