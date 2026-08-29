@@ -38,6 +38,7 @@
             step: 2,
             bookTitle: "動物化するポストモダン",
             author: "東浩紀",
+            coverUrl: "https://cover.openbd.jp/9784061495753.jpg",
             intent: "ボードリヤール的な記号消費モデルがオタクカルチャーや情報環境でどう変容したかを接続して理解する。"
           }
         ]
@@ -63,7 +64,7 @@
         ? routes 
         : routes.filter(r => r.category === selectedCategory);
 
-      // 書籍検索（CORSプロキシ・複数エンドポイント対応）
+      // 国会図書館サーチ (NDL) API を使った完全CORSフリー検索
       const handleSearchBook = async (idx) => {
         const query = newSteps[idx].searchQuery.trim();
         if (!query) return;
@@ -76,57 +77,63 @@
         } : s));
 
         try {
-          // 安定して取得できるGoogle Books CORSミラーエンドポイントを使用
-          const targetUrl = `https://corsproxy.io/?url=${encodeURIComponent(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=6`)}`;
+          // 国立国会図書館サーチ OpenSearch API
+          const targetUrl = `https://ndlsearch.ndl.go.jp/api/opensearch?title=${encodeURIComponent(query)}&cnt=6`;
+          const res = await fetch(targetUrl);
           
-          let res = await fetch(targetUrl);
-          
-          // プロキシが混雑している場合は直接フォールバック
-          if (!res.ok) {
-            res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=6`);
-          }
-          
-          const data = await res.json();
-          
-          if (!data.items || data.items.length === 0) {
+          if (!res.ok) throw new Error("NDL API Error");
+
+          const xmlText = await res.text();
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+          const items = xmlDoc.getElementsByTagName("item");
+
+          if (!items || items.length === 0) {
             setNewSteps(prev => prev.map((s, i) => i === idx ? { 
               ...s, 
               isSearching: false, 
               searchResults: [], 
-              searchMessage: "該当する書籍が見つかりませんでした。タイトル欄に直接手入力してください。" 
+              searchMessage: "該当する書籍が見つかりませんでした。直接手入力してください。" 
             } : s));
             return;
           }
 
-          const results = data.items.map(item => {
-            const info = item.volumeInfo || {};
-            let thumb = "";
-            if (info.imageLinks) {
-              thumb = (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail || "").replace("http://", "https://");
+          const parsedResults = [];
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const titleElem = item.getElementsByTagName("title")[0];
+            const authorElem = item.getElementsByTagName("author")[0];
+            const isbnElem = item.getElementsByTagName("identifier")[0];
+
+            const title = titleElem ? titleElem.textContent : query;
+            const author = authorElem ? authorElem.textContent : "著者不明";
+            
+            // ISBNがあればopenBDから高画質な書影を取得
+            let isbn = "";
+            if (isbnElem && isbnElem.textContent) {
+              const match = isbnElem.textContent.match(/\d{13}|\d{10}/);
+              if (match) isbn = match[0];
             }
-            return {
-              title: info.title || query,
-              author: (info.authors && info.authors.join(", ")) || (info.publisher ? `${info.publisher} 出版` : "著者不明"),
-              coverUrl: thumb
-            };
-          });
+            const coverUrl = isbn ? `https://cover.openbd.jp/${isbn}.jpg` : "";
+
+            parsedResults.push({ title, author, coverUrl });
+          }
 
           setNewSteps(prev => prev.map((s, i) => i === idx ? { 
             ...s, 
             isSearching: false, 
-            searchResults: results, 
+            searchResults: parsedResults, 
             searchMessage: "" 
           } : s));
 
         } catch (error) {
-          console.warn("API通信エラー:", error);
-          // 通信失敗時でも入力キーワードを即座にタイトルへセット
+          console.warn("API Error:", error);
           setNewSteps(prev => prev.map((s, i) => i === idx ? { 
             ...s, 
             isSearching: false, 
             bookTitle: query,
             searchResults: [], 
-            searchMessage: `通信が制限されたため「${query}」をタイトル欄にセットしました。著者名を手入力してください。` 
+            searchMessage: `通信に失敗したため「${query}」をタイトル欄に代入しました。` 
           } : s));
         }
       };
@@ -183,7 +190,6 @@
 
       return (
         <div className="max-w-3xl mx-auto px-4 py-10">
-          {/* ヘッダー */}
           <header className="flex justify-between items-center mb-8 border-b border-stone-200 pb-4">
             <div>
               <h1 
@@ -202,7 +208,6 @@
             </button>
           </header>
 
-          {/* 1. 詳細画面 */}
           {currentRoute ? (
             <div>
               <button 
@@ -245,6 +250,7 @@
                             src={item.coverUrl} 
                             alt={item.bookTitle} 
                             className="w-16 h-24 object-cover rounded shadow-sm border border-stone-200 shrink-0 bg-stone-100"
+                            onError={(e) => { e.target.style.display = 'none'; }}
                           />
                         ) : (
                           <div className="w-16 h-24 bg-stone-100 border border-stone-200 rounded flex items-center justify-center text-[10px] text-stone-400 text-center px-1 shrink-0">
@@ -268,7 +274,6 @@
               </div>
             </div>
           ) : (
-            /* 2. 一覧画面 */
             <div>
               <div className="flex gap-2 overflow-x-auto pb-4 mb-6 border-b border-stone-200">
                 {INITIAL_CATEGORIES.map(cat => (
@@ -316,7 +321,6 @@
             </div>
           )}
 
-          {/* 3. 投稿モーダル */}
           {isModalOpen && (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
               <div className="bg-white rounded-xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 shadow-xl border border-stone-200">
@@ -375,22 +379,18 @@
                     />
                   </div>
 
-                  {/* ステップ入力フォーム */}
                   <div className="space-y-4 pt-2">
                     <label className="block text-xs font-bold text-stone-900 uppercase">読む順番と意図</label>
                     {newSteps.map((step, idx) => (
                       <div key={idx} className="p-4 bg-[#FBF9F5] border border-stone-200 rounded-lg space-y-3">
-                        <div className="flex justify-between items-center">
-                          <div className="font-bold text-xs text-amber-900">Step {idx + 1}</div>
-                        </div>
+                        <div className="font-bold text-xs text-amber-900">Step {idx + 1}</div>
 
-                        {/* 書籍検索バー */}
                         <div className="space-y-1">
-                          <label className="block text-[11px] font-medium text-stone-600">書籍を検索して自動入力</label>
+                          <label className="block text-[11px] font-medium text-stone-600">書籍を検索（国会図書館DB直接検索）</label>
                           <div className="flex gap-2">
                             <input 
                               type="text" 
-                              placeholder="本名や著者名を入力（例: 消費社会の神話と構造）" 
+                              placeholder="タイトルを入力（例: 消費社会の神話と構造）" 
                               value={step.searchQuery}
                               onChange={(e) => {
                                 const val = e.target.value;
@@ -414,14 +414,12 @@
                             </button>
                           </div>
 
-                          {/* メッセージ */}
                           {step.searchMessage && (
                             <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/60 p-2 rounded mt-1">
                               {step.searchMessage}
                             </div>
                           )}
 
-                          {/* 検索候補リスト */}
                           {step.searchResults.length > 0 && (
                             <div className="bg-white border border-stone-300 rounded-md shadow-lg mt-1 p-2 space-y-1.5 max-h-48 overflow-y-auto">
                               <span className="text-[10px] text-stone-400 block px-1">候補を選択してください：</span>
@@ -432,9 +430,9 @@
                                   className="flex items-center gap-2.5 p-1.5 hover:bg-stone-100 rounded cursor-pointer transition text-left"
                                 >
                                   {book.coverUrl ? (
-                                    <img src={book.coverUrl} alt="" className="w-8 h-10 object-cover rounded border border-stone-200 shrink-0 bg-stone-50" />
+                                    <img src={book.coverUrl} alt="" className="w-8 h-10 object-cover rounded border border-stone-200 shrink-0 bg-stone-50" onError={(e) => { e.target.style.display = 'none'; }} />
                                   ) : (
-                                    <div className="w-8 h-10 bg-stone-100 border border-stone-200 rounded flex items-center justify-center text-[8px] text-stone-400 shrink-0">No Img</div>
+                                    <div className="w-8 h-10 bg-stone-100 border border-stone-200 rounded flex items-center justify-center text-[8px] text-stone-400 shrink-0">書籍</div>
                                   )}
                                   <div className="min-w-0 flex-1">
                                     <div className="text-xs font-bold text-stone-800 truncate">{book.title}</div>
@@ -446,7 +444,6 @@
                           )}
                         </div>
 
-                        {/* 本のタイトル・著者名 */}
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <input 
                             type="text" 
