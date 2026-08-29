@@ -463,13 +463,13 @@
             </div>
           )}
 
-          {/* 🌟 画面中央のステップ式投稿モーダル */}
+          {/* 🌟 画面中央のステップ式投稿モーダル（縦長に上下拡張 & コメント欄最大化） */}
           {isModalOpen && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-stone-200 transition-all">
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
+              <div className="bg-white rounded-2xl max-w-lg w-full h-[85vh] min-h-[580px] max-h-[760px] p-5 sm:p-7 shadow-2xl border border-stone-200 flex flex-col justify-between transition-all">
                 
-                {/* ヘッダー */}
-                <div className="flex justify-between items-center border-b border-stone-100 pb-3 mb-4">
+                {/* ヘッダー（固定） */}
+                <div className="flex justify-between items-center border-b border-stone-100 pb-3 shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold px-2.5 py-1 rounded bg-stone-900 text-stone-50 shadow-sm">
                       {wizardStep === 0 ? "Step 1/2: 基本設定" : `Step 2/2: 本の入力 (${currentBookIndex + 1}/${newSteps.length}冊目)`}
@@ -480,7 +480,7 @@
                   </div>
                   <button 
                     onClick={() => setIsModalOpen(false)} 
-                    className="text-stone-400 hover:text-stone-700 text-xl font-semibold"
+                    className="text-stone-400 hover:text-stone-700 text-xl font-semibold p-1"
                   >
                     ✕
                   </button>
@@ -488,106 +488,108 @@
 
                 {/* 画面1：基本設定（分野 ＆ 並列/ルートの選択） */}
                 {wizardStep === 0 && (
-                  <div className="space-y-4">
-                    {/* 分野選択（黒文字 & 強調デザインで目立たせる） */}
-                    <div className="p-3.5 bg-stone-100/80 rounded-xl border border-stone-300">
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-xs font-black text-stone-950 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-stone-900 inline-block"></span>
-                          1. 分野を選択してください（必須）
-                        </label>
-                        <span className="text-[10px] font-bold bg-stone-900 text-stone-50 px-2 py-0.5 rounded">選択必須</span>
-                      </div>
-                      <select 
-                        value={newCategory} 
-                        onChange={(e) => setNewCategory(e.target.value)}
-                        className="w-full border-2 border-stone-900 rounded-lg px-3.5 py-2 text-sm font-bold bg-white text-stone-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-stone-900"
-                      >
-                        {INITIAL_CATEGORIES.filter(c => c !== "すべて").map(c => (
-                          <option key={c} value={c} className="font-medium text-stone-900">{c}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* スタイル選択 */}
-                    <div>
-                      <label className="block text-xs font-bold text-stone-900 mb-1.5">
-                        2. 投稿スタイルを選択
-                      </label>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setFormatType("parallel")}
-                          className={`p-3 rounded-xl border-2 text-left transition ${
-                            formatType === "parallel"
-                              ? "border-stone-900 bg-stone-900 text-white shadow-sm"
-                              : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
-                          }`}
+                  <div className="flex-1 flex flex-col justify-between py-2 space-y-3 overflow-y-auto">
+                    <div className="space-y-4">
+                      {/* 分野選択 */}
+                      <div className="p-3.5 bg-stone-100/80 rounded-xl border border-stone-300">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-black text-stone-950 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-stone-900 inline-block"></span>
+                            1. 分野を選択してください（必須）
+                          </label>
+                          <span className="text-[10px] font-bold bg-stone-900 text-stone-50 px-2 py-0.5 rounded">選択必須</span>
+                        </div>
+                        <select 
+                          value={newCategory} 
+                          onChange={(e) => setNewCategory(e.target.value)}
+                          className="w-full border-2 border-stone-900 rounded-lg px-3.5 py-2 text-sm font-bold bg-white text-stone-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-stone-900"
                         >
-                          <div className="font-bold text-xs">並列リスト形式</div>
-                          <div className={`text-[10px] mt-0.5 ${formatType === "parallel" ? "text-stone-300" : "text-stone-500"}`}>
-                            おすすめ本・テーマ別
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setFormatType("sequence")}
-                          className={`p-3 rounded-xl border-2 text-left transition ${
-                            formatType === "sequence"
-                              ? "border-stone-900 bg-stone-900 text-white shadow-sm"
-                              : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
-                          }`}
-                        >
-                          <div className="font-bold text-xs">順序ルート形式</div>
-                          <div className={`text-[10px] mt-0.5 ${formatType === "sequence" ? "text-stone-300" : "text-stone-500"}`}>
-                            読む順番（Step 1, 2...）
-                          </div>
-                        </button>
+                          {INITIAL_CATEGORIES.filter(c => c !== "すべて").map(c => (
+                            <option key={c} value={c} className="font-medium text-stone-900">{c}</option>
+                          ))}
+                        </select>
                       </div>
-                    </div>
 
-                    {/* タイトルと想定読者 */}
-                    <div className="pt-2 border-t border-stone-100 space-y-3">
+                      {/* スタイル選択 */}
                       <div>
-                        <label className="block text-xs font-bold text-stone-900 mb-1">
-                          リスト / ルートのタイトル *
+                        <label className="block text-xs font-bold text-stone-900 mb-1.5">
+                          2. 投稿スタイルを選択
                         </label>
-                        <input 
-                          type="text" 
-                          required
-                          placeholder={formatType === "parallel" ? "例: 現代思想を始めるためのおすすめ3選" : "例: 主観と認識の限界をめぐる基礎ルート"} 
-                          value={newTitle}
-                          onChange={(e) => setNewTitle(e.target.value)}
-                          className="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-900 font-medium"
-                        />
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setFormatType("parallel")}
+                            className={`p-3 rounded-xl border-2 text-left transition ${
+                              formatType === "parallel"
+                                ? "border-stone-900 bg-stone-900 text-white shadow-sm"
+                                : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
+                            }`}
+                          >
+                            <div className="font-bold text-xs">並列リスト形式</div>
+                            <div className={`text-[10px] mt-0.5 ${formatType === "parallel" ? "text-stone-300" : "text-stone-500"}`}>
+                              おすすめ本・テーマ別
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormatType("sequence")}
+                            className={`p-3 rounded-xl border-2 text-left transition ${
+                              formatType === "sequence"
+                                ? "border-stone-900 bg-stone-900 text-white shadow-sm"
+                                : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
+                            }`}
+                          >
+                            <div className="font-bold text-xs">順序ルート形式</div>
+                            <div className={`text-[10px] mt-0.5 ${formatType === "sequence" ? "text-stone-300" : "text-stone-500"}`}>
+                              読む順番（Step 1, 2...）
+                            </div>
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2.5">
+                      {/* タイトルと想定読者 */}
+                      <div className="pt-2 border-t border-stone-100 space-y-3">
                         <div>
-                          <label className="block text-xs font-bold text-stone-900 mb-1">テーマ・関心・対象</label>
+                          <label className="block text-xs font-bold text-stone-900 mb-1">
+                            リスト / ルートのタイトル *
+                          </label>
                           <input 
                             type="text" 
-                            placeholder="例: 初心者向け、構造主義" 
-                            value={newTarget}
-                            onChange={(e) => setNewTarget(e.target.value)}
-                            className="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900"
+                            required
+                            placeholder={formatType === "parallel" ? "例: 現代思想を始めるためのおすすめ3選" : "例: 主観と認識の限界をめぐる基礎ルート"} 
+                            value={newTitle}
+                            onChange={(e) => setNewTitle(e.target.value)}
+                            className="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-900 focus:outline-none focus:border-stone-900 font-medium"
                           />
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-stone-900 mb-1">キュレーター名</label>
-                          <input 
-                            type="text" 
-                            placeholder="例: 名無しの読書子" 
-                            value={newAuthor}
-                            onChange={(e) => setNewAuthor(e.target.value)}
-                            className="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900"
-                          />
+
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-xs font-bold text-stone-900 mb-1">テーマ・関心・対象</label>
+                            <input 
+                              type="text" 
+                              placeholder="例: 初心者向け、構造主義" 
+                              value={newTarget}
+                              onChange={(e) => setNewTarget(e.target.value)}
+                              className="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-stone-900 mb-1">キュレーター名</label>
+                            <input 
+                              type="text" 
+                              placeholder="例: 名無しの読書子" 
+                              value={newAuthor}
+                              onChange={(e) => setNewAuthor(e.target.value)}
+                              className="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs text-stone-900"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex justify-end gap-2 pt-3 border-t border-stone-100">
+                    <div className="flex justify-end gap-2 pt-3 border-t border-stone-100 shrink-0">
                       <button 
                         type="button" 
                         onClick={() => setIsModalOpen(false)}
@@ -612,54 +614,55 @@
                   </div>
                 )}
 
-                {/* 画面2：本の入力（中見出しを撤廃し、コメント欄を大きく拡大） */}
+                {/* 画面2：本の入力（上下拡張＆コメント欄を最大限に拡大） */}
                 {wizardStep === 1 && (
-                  <div className="space-y-3.5">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-xs font-bold text-stone-900 mb-1">本のタイトル *</label>
-                        <input 
-                          type="text" 
+                  <div className="flex-1 flex flex-col justify-between py-2 space-y-3">
+                    <div className="flex-1 flex flex-col space-y-3">
+                      <div className="grid grid-cols-2 gap-2.5 shrink-0">
+                        <div>
+                          <label className="block text-xs font-bold text-stone-900 mb-1">本のタイトル *</label>
+                          <input 
+                            type="text" 
+                            required
+                            placeholder="例: 方法序説" 
+                            value={newSteps[currentBookIndex]?.bookTitle || ""}
+                            onChange={(e) => handleStepChange(currentBookIndex, "bookTitle", e.target.value)}
+                            className="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-900 font-medium focus:outline-none focus:border-stone-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-stone-900 mb-1">著者名</label>
+                          <input 
+                            type="text" 
+                            placeholder="例: ルネ・デカルト" 
+                            value={newSteps[currentBookIndex]?.author || ""}
+                            onChange={(e) => handleStepChange(currentBookIndex, "author", e.target.value)}
+                            className="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-900"
+                          />
+                        </div>
+                      </div>
+
+                      {/* コメント欄（flex-1 で余った縦幅をすべて使って最大化） */}
+                      <div className="flex-1 flex flex-col min-h-0">
+                        <div className="flex justify-between items-center mb-1 shrink-0">
+                          <label className="text-xs font-bold text-stone-900">
+                            {formatType === "parallel" ? "おすすめの理由・見どころ（コメント） *" : "なぜこの順番なのか？（接続の理由） *"}
+                          </label>
+                          <span className="text-[10px] text-stone-500 font-medium">広々と入力できます</span>
+                        </div>
+                        <textarea 
                           required
-                          placeholder="例: 方法序説" 
-                          value={newSteps[currentBookIndex]?.bookTitle || ""}
-                          onChange={(e) => handleStepChange(currentBookIndex, "bookTitle", e.target.value)}
-                          className="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-900 font-medium focus:outline-none focus:border-stone-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-stone-900 mb-1">著者名</label>
-                        <input 
-                          type="text" 
-                          placeholder="例: ルネ・デカルト" 
-                          value={newSteps[currentBookIndex]?.author || ""}
-                          onChange={(e) => handleStepChange(currentBookIndex, "author", e.target.value)}
-                          className="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm text-stone-900"
+                          placeholder={formatType === "parallel" 
+                            ? "例: 現代思想を学ぶ上で最も切れ味鋭い入門書。デリダやドゥルーズに入る前の足がかりとして最適です。特に第2章の解説が明快で、初学者がつまずきやすい概念を鮮やかに整理してくれます。" 
+                            : "例: 1冊目の主観の出発点を踏まえ、理性の限界を規定する2冊目へスムーズに接続するため。この本で提示された疑問が次のステップで深められます。"}
+                          value={newSteps[currentBookIndex]?.intent || ""}
+                          onChange={(e) => handleStepChange(currentBookIndex, "intent", e.target.value)}
+                          className="w-full flex-1 min-h-[240px] sm:min-h-[280px] border border-stone-300 rounded-xl p-3.5 text-xs sm:text-sm text-stone-900 leading-relaxed focus:outline-none focus:border-stone-900 resize-none font-normal"
                         />
                       </div>
                     </div>
 
-                    {/* コメント欄（rows="6" で大きく拡大） */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs font-bold text-stone-900">
-                          {formatType === "parallel" ? "おすすめの理由・見どころ（コメント） *" : "なぜこの順番なのか？（接続の理由） *"}
-                        </label>
-                        <span className="text-[10px] text-stone-500 font-medium">詳しく書けます</span>
-                      </div>
-                      <textarea 
-                        rows="6"
-                        required
-                        placeholder={formatType === "parallel" 
-                          ? "例: 現代思想を学ぶ上で最も切れ味鋭い入門書。デリダやドゥルーズに入る前の足がかりとして最適です。特に第2章の解説が明快で..." 
-                          : "例: 1冊目の主観の出発点を踏まえ、理性の限界を規定する2冊目へスムーズに接続するため。この本で提示された疑問が次の本で深められます。"}
-                        value={newSteps[currentBookIndex]?.intent || ""}
-                        onChange={(e) => handleStepChange(currentBookIndex, "intent", e.target.value)}
-                        className="w-full border border-stone-300 rounded-xl p-3 text-xs text-stone-900 leading-relaxed focus:outline-none focus:border-stone-900 resize-none font-normal"
-                      />
-                    </div>
-
-                    <div className="flex justify-between items-center pt-3 border-t border-stone-100">
+                    <div className="flex justify-between items-center pt-3 border-t border-stone-100 shrink-0">
                       <button 
                         type="button" 
                         onClick={handlePrevBook}
